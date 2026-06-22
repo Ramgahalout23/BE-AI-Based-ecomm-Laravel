@@ -1,0 +1,93 @@
+<?php
+
+namespace App\Services;
+
+use App\Repositories\TrackingRepository;
+use App\Models\UserEvent;
+
+class TrackingService
+{
+    public function __construct(
+        protected TrackingRepository $trackingRepository
+    ) {}
+
+    public function recordPageView(string $url, ?string $userId, ?string $sessionId, ?string $referrer, ?string $title = null, ?string $userAgent = null, ?string $device = null): array
+    {
+        $view = $this->trackingRepository->recordPageView($url, $userId, $sessionId, $referrer, $title, $userAgent, $device);
+        return $view->toArray();
+    }
+
+    public function createSession(?string $sessionId, ?string $userId, string $ip, string $userAgent, ?string $device = null, ?string $browser = null, ?string $os = null, ?string $referrer = null, ?string $landingPage = null): array
+    {
+        $session = $this->trackingRepository->createSession($sessionId, $userId, $ip, $userAgent, $device, $browser, $os, $referrer, $landingPage);
+        return $session->toArray();
+    }
+
+    public function endSession(string $sessionId): void
+    {
+        $this->trackingRepository->endSession($sessionId);
+    }
+
+    public function recordEvent(string $sessionId, string $eventType, ?string $eventName = null, ?string $category = null, ?string $label = null, ?string $value = null, ?string $url = null, ?string $metadata = null, ?string $userId = null): array
+    {
+        $event = $this->trackingRepository->recordEvent($sessionId, $eventType, $eventName, $category, $label, $value, $url, $metadata, $userId);
+        return $event->toArray();
+    }
+
+    public function getPageViewStats(): array
+    {
+        return $this->trackingRepository->getPageViewsStats();
+    }
+
+    public function getActiveSessions(): array
+    {
+        return ['active_sessions' => $this->trackingRepository->getActiveSessions()];
+    }
+
+    public function getTopPages(int $limit = 10): array
+    {
+        return $this->trackingRepository->getTopPages($limit)->toArray();
+    }
+
+    // ── Admin Event Methods ──
+
+    public function getEvents(int $page = 1, int $limit = 20): array
+    {
+        $paginator = UserEvent::with('session')
+            ->latest()
+            ->paginate($limit, ['*'], 'page', $page);
+        return [
+            'items' => $paginator->items(),
+            'page' => $paginator->currentPage(),
+            'limit' => $paginator->perPage(),
+            'total' => $paginator->total(),
+            'total_pages' => $paginator->lastPage(),
+        ];
+    }
+
+    public function getEventStats(): array
+    {
+        return [
+            'total_events' => UserEvent::count(),
+            'today' => UserEvent::whereDate('created_at', today())->count(),
+            'by_type' => UserEvent::selectRaw('event_type, COUNT(*) as count')
+                ->groupBy('event_type')
+                ->pluck('count', 'event_type')
+                ->toArray(),
+        ];
+    }
+
+    public function getUserJourney(string $userId): array
+    {
+        $pageViews = $this->trackingRepository->getPageViewsByUser($userId);
+        $events = $this->trackingRepository->getEventsByUser($userId);
+        $sessions = $this->trackingRepository->getSessionsByUser($userId);
+
+        return [
+            'user_id' => $userId,
+            'sessions' => $sessions->toArray(),
+            'page_views' => $pageViews->toArray(),
+            'events' => $events->toArray(),
+        ];
+    }
+}
