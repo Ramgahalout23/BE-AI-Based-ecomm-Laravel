@@ -6,7 +6,9 @@ use App\Repositories\WishlistRepository;
 use App\Services\CartService;
 use App\Exceptions\AppError;
 use App\Models\WishlistItem;
+use App\Models\SharedWishlist;
 use App\Models\Product;
+use Illuminate\Support\Str;
 
 class WishlistService
 {
@@ -112,5 +114,98 @@ class WishlistService
         }
 
         return ['success' => $success, 'failed' => $failed];
+    }
+
+    // ──────────────────────────────────────────────
+    //  Wishlist Sharing
+    // ──────────────────────────────────────────────
+
+    /**
+     * Generate or retrieve an existing share link for the user's wishlist.
+     * Returns the share URL and token.
+     */
+    public function share(string $userId): array
+    {
+        $existing = SharedWishlist::where('user_id', $userId)
+            ->where('is_active', true)
+            ->first();
+
+        if ($existing) {
+            return [
+                'token' => $existing->token,
+                'url' => url("/shared-wishlist/{$existing->token}"),
+                'created_at' => $existing->created_at,
+            ];
+        }
+
+        $token = Str::random(32);
+
+        $shared = SharedWishlist::create([
+            'user_id' => $userId,
+            'token' => $token,
+            'is_active' => true,
+        ]);
+
+        return [
+            'token' => $shared->token,
+            'url' => url("/shared-wishlist/{$shared->token}"),
+            'created_at' => $shared->created_at,
+        ];
+    }
+
+    /**
+     * Revoke the user's active wishlist share link.
+     */
+    public function unshare(string $userId): void
+    {
+        SharedWishlist::where('user_id', $userId)
+            ->where('is_active', true)
+            ->update(['is_active' => false]);
+    }
+
+    /**
+     * Get the current share status for the user's wishlist.
+     * Returns null if no active share link exists.
+     */
+    public function getShareStatus(string $userId): ?array
+    {
+        $shared = SharedWishlist::where('user_id', $userId)
+            ->where('is_active', true)
+            ->first();
+
+        if (!$shared) {
+            return null;
+        }
+
+        return [
+            'token' => $shared->token,
+            'url' => url("/shared-wishlist/{$shared->token}"),
+            'created_at' => $shared->created_at,
+        ];
+    }
+
+    /**
+     * Get a user's wishlist items by share token (public access).
+     * Also returns the user's display name.
+     */
+    public function getSharedWishlist(string $token): array
+    {
+        $shared = SharedWishlist::where('token', $token)
+            ->where('is_active', true)
+            ->with('user')
+            ->first();
+
+        if (!$shared) {
+            throw AppError::notFound('Wishlist not found or share link has expired');
+        }
+
+        $items = $this->wishlistRepository->getUserWishlist($shared->user_id, 1, 100);
+
+        return [
+            'user_name' => $shared->user->name ?? 'Anonymous',
+            'user_id' => $shared->user_id,
+            'items' => $items['items'],
+            'total' => $items['total'],
+        ];
     }
 }

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Api\Traits\MapsCamelCaseFields;
 use App\Services\ShippingService;
 use App\Exceptions\AppError;
 use Illuminate\Http\JsonResponse;
@@ -10,6 +11,13 @@ use Illuminate\Http\Request;
 
 class ShippingController extends Controller
 {
+    use MapsCamelCaseFields;
+
+    private array $fieldMappings = [
+        'orderId' => 'order_id',
+        'trackingNumber' => 'tracking_number',
+        'estimatedDelivery' => 'estimated_delivery',
+    ];
     public function __construct(protected ShippingService $shippingService) {}
 
     public function providers(): JsonResponse
@@ -143,10 +151,7 @@ class ShippingController extends Controller
     public function createShipping(Request $request): JsonResponse
     {
         try {
-            $data = $request->all();
-            // Map camelCase payload from frontend to snake_case DB fields
-            if (isset($data['orderId']))        $data['order_id'] = $data['orderId'];
-            if (isset($data['trackingNumber'])) $data['tracking_number'] = $data['trackingNumber'];
+            $data = $this->mapCamelCase($request->all(), $this->fieldMappings);
 
             $validated = validator($data, [
                 'order_id' => 'required|string',
@@ -163,10 +168,7 @@ class ShippingController extends Controller
     public function updateShipping(Request $request, string $id): JsonResponse
     {
         try {
-            $data = $request->all();
-            // Map camelCase payload from frontend to snake_case DB fields
-            if (isset($data['trackingNumber']))     $data['tracking_number'] = $data['trackingNumber'];
-            if (isset($data['estimatedDelivery']))  $data['estimated_delivery'] = $data['estimatedDelivery'];
+            $data = $this->mapCamelCase($request->all(), $this->fieldMappings);
 
             $validated = validator($data, [
                 'carrier' => 'sometimes|string|max:255',

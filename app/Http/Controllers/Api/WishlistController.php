@@ -98,4 +98,56 @@ class WishlistController extends Controller
             return response()->json(['success' => true, 'message' => $result['message']]);
         } catch (AppError $e) { return $e->render(); }
     }
+
+    // ──────────────────────────────────────────────
+    //  Wishlist Sharing
+    // ──────────────────────────────────────────────
+
+    /**
+     * Generate or get existing share link for wishlist.
+     * POST /api/v1/wishlist/share
+     */
+    public function share(): JsonResponse
+    {
+        try {
+            $result = $this->wishlistService->share(Auth::id());
+            return response()->json(['success' => true, 'data' => $result]);
+        } catch (AppError $e) { return $e->render(); }
+    }
+
+    /**
+     * Revoke the wishlist share link.
+     * DELETE /api/v1/wishlist/share
+     */
+    public function unshare(): JsonResponse
+    {
+        try {
+            $this->wishlistService->unshare(Auth::id());
+            return response()->json(['success' => true, 'message' => 'Wishlist share link revoked']);
+        } catch (AppError $e) { return $e->render(); }
+    }
+
+    /**
+     * Get current share status.
+     * GET /api/v1/wishlist/share
+     */
+    public function shareStatus(): JsonResponse
+    {
+        try {
+            $result = $this->wishlistService->getShareStatus(Auth::id());
+            return response()->json(['success' => true, 'data' => $result]);
+        } catch (AppError $e) { return $e->render(); }
+    }
+
+    /**
+     * Public: view a shared wishlist by token.
+     * GET /api/v1/shared-wishlist/{token}
+     */
+    public function viewShared(string $token): JsonResponse
+    {
+        try {
+            $result = $this->wishlistService->getSharedWishlist($token);
+            return response()->json(['success' => true, 'data' => $result]);
+        } catch (AppError $e) { return $e->render(); }
+    }
 }

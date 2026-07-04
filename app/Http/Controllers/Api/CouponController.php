@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Api\Traits\MapsCamelCaseFields;
 use App\Services\CouponService;
 use App\Exceptions\AppError;
 use Illuminate\Http\JsonResponse;
@@ -10,6 +11,17 @@ use Illuminate\Http\Request;
 
 class CouponController extends Controller
 {
+    use MapsCamelCaseFields;
+
+    private array $fieldMappings = [
+        'discountType' => 'discount_type',
+        'discountValue' => 'discount_value',
+        'minPurchase' => 'min_order_value',
+        'maxUses' => 'usage_limit',
+        'expiresAt' => 'expiry_date',
+        'isActive' => 'is_active',
+    ];
+
     public function __construct(
         protected CouponService $couponService
     ) {}
@@ -38,15 +50,10 @@ class CouponController extends Controller
     public function store(Request $request): JsonResponse
     {
         try {
-            $data = $request->all();
             // Map camelCase payload from frontend to snake_case
-            if (isset($data['discountType'])) $data['discount_type'] = $data['discountType'];
-            if (isset($data['discountValue'])) $data['discount_value'] = $data['discountValue'];
-            if (isset($data['minPurchase'])) $data['min_order_value'] = $data['minPurchase'];
-            if (isset($data['maxUses'])) $data['usage_limit'] = $data['maxUses'];
-            if (isset($data['expiresAt'])) $data['expiry_date'] = $data['expiresAt'];
+            $input = $this->mapCamelCase($request->all(), $this->fieldMappings);
 
-            $validated = validator($data, [
+            $validated = validator($input, [
                 'code' => 'required|string|unique:coupons',
                 'discount_type' => 'required|string',
                 'discount_value' => 'required|numeric',
@@ -62,16 +69,10 @@ class CouponController extends Controller
     public function update(Request $request, string $id): JsonResponse
     {
         try {
-            $data = $request->all();
             // Map camelCase payload from frontend to snake_case
-            if (isset($data['discountType'])) $data['discount_type'] = $data['discountType'];
-            if (isset($data['discountValue'])) $data['discount_value'] = $data['discountValue'];
-            if (isset($data['minPurchase'])) $data['min_order_value'] = $data['minPurchase'];
-            if (isset($data['maxUses'])) $data['usage_limit'] = $data['maxUses'];
-            if (isset($data['expiresAt'])) $data['expiry_date'] = $data['expiresAt'];
-            if (isset($data['isActive'])) $data['is_active'] = $data['isActive'];
+            $input = $this->mapCamelCase($request->all(), $this->fieldMappings);
 
-            $validated = validator($data, [
+            $validated = validator($input, [
                 'code' => 'sometimes|string|unique:coupons,code,'.$id,
             ])->validate();
 

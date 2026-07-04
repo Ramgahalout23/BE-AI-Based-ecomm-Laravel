@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Api\Traits\MapsCamelCaseFields;
 use App\Services\BannerService;
 use App\Exceptions\AppError;
 use Illuminate\Http\JsonResponse;
@@ -10,6 +11,14 @@ use Illuminate\Http\Request;
 
 class BannerController extends Controller
 {
+    use MapsCamelCaseFields;
+
+    private array $fieldMappings = [
+        'imageUrl' => 'image_url',
+        'linkUrl' => 'link_url',
+        'displayMode' => 'display_mode',
+        'isActive' => 'is_active',
+    ];
     public function __construct(protected BannerService $bannerService) {}
 
     // ── Public User-Facing Endpoints ──
@@ -99,14 +108,10 @@ class BannerController extends Controller
     public function store(Request $request): JsonResponse
     {
         try {
-            $data = $request->all();
             // Map camelCase payload from frontend to snake_case
-            if (isset($data['imageUrl'])) $data['image_url'] = $data['imageUrl'];
-            if (isset($data['linkUrl'])) $data['link_url'] = $data['linkUrl'];
-            if (isset($data['displayMode'])) $data['display_mode'] = $data['displayMode'];
-            if (isset($data['isActive'])) $data['is_active'] = $data['isActive'];
+            $input = $this->mapCamelCase($request->all(), $this->fieldMappings);
 
-            $validated = validator($data, [
+            $validated = validator($input, [
                 'title' => 'nullable|string|max:255',
                 'description' => 'nullable|string',
                 'image_url' => 'nullable|string',
@@ -137,14 +142,10 @@ class BannerController extends Controller
     public function update(Request $request, string $id): JsonResponse
     {
         try {
-            $data = $request->all();
             // Map camelCase payload from frontend to snake_case
-            if (isset($data['imageUrl'])) $data['image_url'] = $data['imageUrl'];
-            if (isset($data['linkUrl'])) $data['link_url'] = $data['linkUrl'];
-            if (isset($data['displayMode'])) $data['display_mode'] = $data['displayMode'];
-            if (isset($data['isActive'])) $data['is_active'] = $data['isActive'];
+            $input = $this->mapCamelCase($request->all(), $this->fieldMappings);
 
-            $validated = validator($data, [
+            $validated = validator($input, [
                 'title' => 'sometimes|string|max:255',
                 'description' => 'nullable|string',
                 'image_url' => 'nullable|string',

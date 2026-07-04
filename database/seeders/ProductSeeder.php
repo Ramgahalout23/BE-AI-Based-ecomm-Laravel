@@ -8,6 +8,7 @@ use App\Models\ProductVariant;
 use App\Models\Category;
 use App\Models\Brand;
 use App\Models\Inventory;
+use App\Models\Setting;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
@@ -54,9 +55,14 @@ class ProductSeeder extends Seeder
         // 2. ENSURE BRAND EXISTS
         // ─────────────────────────────────────────────
         $this->command->info('🏷️  Ensuring brand...');
+        $storeName = 'THREVOLT';
+        try {
+            $val = Setting::where('module', 'SITE')->where('key', 'storeName')->value('value');
+            if ($val) $storeName = $val;
+        } catch (\Exception $e) {}
         $brand = Brand::firstOrCreate(
             ['slug' => 'threvolt'],
-            ['name' => 'THREVOLT', 'description' => 'In-house premium brand',
+            ['name' => $storeName, 'description' => 'In-house premium brand',
              'logo' => 'https://images.unsplash.com/photo-1583743814966-8936f5b7be1a?q=80&w=200']
         );
         $this->command->info('   ✓ Brand ready');
@@ -336,8 +342,8 @@ class ProductSeeder extends Seeder
                 'badge'             => $def['badge'],
                 'rating'            => $def['rating'],
                 'review_count'      => $def['reviews'],
-                'seo_title'         => $def['name'] . ' | THREVOLT',
-                'seo_description'   => "Shop {$def['name']} at THREVOLT. Premium quality with free shipping.",
+                'seo_title'         => $def['name'] . ' | ' . $storeName,
+                'seo_description'   => "Shop {$def['name']} at {$storeName}. Premium quality with free shipping.",
             ]);
 
             // Images

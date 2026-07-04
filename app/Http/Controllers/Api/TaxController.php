@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Api\Traits\MapsCamelCaseFields;
 use App\Models\TaxRate;
 use App\Exceptions\AppError;
 use Illuminate\Http\JsonResponse;
@@ -10,6 +11,7 @@ use Illuminate\Http\Request;
 
 class TaxController extends Controller
 {
+    use MapsCamelCaseFields;
     public function getTaxRates(Request $request): JsonResponse
     {
         $perPage = $request->input('per_page', 20);
@@ -28,6 +30,12 @@ class TaxController extends Controller
     public function createTaxRate(Request $request): JsonResponse
     {
         try {
+            $input = $this->mapCamelCase($request->all(), [
+                'isActive' => 'is_active',
+                'zipPattern' => 'zip_pattern',
+            ]);
+            $request->replace($input);
+
             $validated = $request->validate([
                 'name' => 'required|string|max:255',
                 'rate' => 'required|numeric|min:0|max:100',
@@ -48,8 +56,15 @@ class TaxController extends Controller
     public function updateTaxRate(Request $request, string $id): JsonResponse
     {
         try {
+            $input = $this->mapCamelCase($request->all(), [
+                'isActive' => 'is_active',
+                'zipPattern' => 'zip_pattern',
+            ]);
+
             $rate = TaxRate::findOrFail($id);
-            $rate->update($request->only(['name', 'rate', 'type', 'country', 'state', 'city', 'zip_pattern', 'is_active', 'priority', 'description']));
+            $rate->update(collect($input)->only([
+                'name', 'rate', 'type', 'country', 'state', 'city', 'zip_pattern', 'is_active', 'priority', 'description'
+            ])->toArray());
             return response()->json(['success' => true, 'data' => $rate]);
         } catch (AppError $e) { return $e->render(); }
     }

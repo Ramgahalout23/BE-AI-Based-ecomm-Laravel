@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Api\Traits\MapsCamelCaseFields;
+use App\Jobs\SendAbandonedCartReminderJob;
 use App\Services\AbandonedCartService;
 use App\Exceptions\AppError;
 use Illuminate\Http\JsonResponse;
@@ -11,6 +13,7 @@ use Illuminate\Support\Facades\Auth;
 
 class AbandonedCartController extends Controller
 {
+    use MapsCamelCaseFields;
     public function __construct(protected AbandonedCartService $abandonedCartService) {}
 
     public function all(Request $request): JsonResponse
@@ -65,13 +68,21 @@ class AbandonedCartController extends Controller
     public function store(Request $request): JsonResponse
     {
         try {
-            $data = $request->validate([
+            $input = $this->mapCamelCase($request->all(), [
+                'cartData' => 'cart_data',
+                'sessionId' => 'session_id',
+            ]);
+
+            $data = validator($input, [
                 'cart_data' => 'nullable|array',
                 'session_id' => 'nullable|string',
-            ]);
+            ])->validate();
+
             $cart = $this->abandonedCartService->create(Auth::id(), $data);
             return response()->json(['success' => true, 'data' => $cart], 201);
-        } catch (AppError $e) { return $e->render(); }
+        } catch (AppError $e) { return $e->render(); } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage(), 'errors' => $e->errors()], 422);
+        }
     }
 
     public function userCarts(): JsonResponse
@@ -87,7 +98,8 @@ class AbandonedCartController extends Controller
     public function sendReminder(string $id): JsonResponse
     {
         try {
-            return response()->json(['success' => true, 'data' => $this->abandonedCartService->sendReminder($id)]);
+            SendAbandonedCartReminderJob::dispatch($id);
+            return response()->json(['success' => true, 'message' => 'Reminder queued for processing'], 202);
         } catch (AppError $e) { return $e->render(); }
     }
 }

@@ -22,7 +22,7 @@ use App\Services\AnalyticsSummaryService;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Pagination\LengthAwarePaginator;
-use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Collection;
 
 class AdminRepository
 {
@@ -76,6 +76,7 @@ class AdminRepository
         'admin_payment_trends_30',
         'admin_conversion_metrics',
         'admin_review_analytics_30',
+        'admin_low_stock_variants',
         ];
 
         foreach ($keys as $key) {
@@ -112,6 +113,7 @@ class AdminRepository
         $this->getPaymentMethodStats();
         $this->getUserAnalytics();
         $this->getOrderRevenueStats();
+        $this->getLowStockVariants();
     }
 
     // ── Analytics ──
@@ -169,6 +171,22 @@ class AdminRepository
             'date'    => $row['date'],
             'revenue' => $row['revenue'],
         ], $rows);
+    }
+
+    /**
+     * Get low stock / out of stock variants for dashboard alerts.
+     * Cached for 300s to match other dashboard cache durations.
+     */
+    public function getLowStockVariants(): array
+    {
+        return Cache::remember('admin_low_stock_variants', 300, function () {
+            return ProductVariant::with('product:id,name')
+                ->where('quantity', '<=', 5)
+                ->orderBy('quantity')
+                ->take(20)
+                ->get()
+                ->toArray();
+        });
     }
 
     public function getProductAnalytics(int $limit = 20): Collection
@@ -676,6 +694,64 @@ class AdminRepository
             }
         }
 
+        // ── Queue Health ──
+        $failedJobCount = 0;
+        $latestFailedJob = null;
+        try {
+            $failedJobCount = \Illuminate\Support\Facades\DB::table('failed_jobs')->count();
+            $latest = \Illuminate\Support\Facades\DB::table('failed_jobs')
+                ->orderBy('failed_at', 'desc')
+                ->first(['uuid', 'queue', 'failed_at']);
+            if ($latest) {
+                $latestFailedJob = [
+                    'uuid' => $latest->uuid,
+                    'queue' => $latest->queue,
+                    'failed_at' => $latest->failed_at,
+                ];
+            }
+        } catch (\Exception $e) {
+            $failedJobCount = -1;
+        }
+
+        // ── Backup Health ──
+        $backupCount = 0;
+        $lastBackupAt = null;
+        $lastBackupSize = null;
+        try {
+            $backupDir = storage_path('app/backups');
+            if (is_dir($backupDir)) {
+                $files = array_diff(scandir($backupDir), ['.', '..']);
+                $backupCount = count($files);
+                if ($backupCount > 0) {
+                    $latestFile = null;
+                    $latestMtime = 0;
+                    foreach ($files as $file) {
+                        $filePath = $backupDir . '/' . $file;
+                        $mtime = filemtime($filePath);
+                        if ($mtime > $latestMtime) {
+                            $latestMtime = $mtime;
+                            $latestFile = $filePath;
+                        }
+                    }
+                    if ($latestFile) {
+                        $lastBackupAt = date('Y-m-d H:i:s', $latestMtime);
+                        $lastBackupSize = filesize($latestFile);
+                    }
+                }
+            }
+        } catch (\Exception $e) {
+            $backupCount = -1;
+        }
+
+        // ── Last backup from settings table ──
+        $lastBackupSetting = null;
+        try {
+            $setting = \App\Models\Setting::where('key', 'backup_last_run')->first();
+            if ($setting) {
+                $lastBackupSetting = $setting->value;
+            }
+        } catch (\Exception $e) {}
+
         return [
             'databaseConnection' => $databaseConnected,
             'cacheConnection' => $cacheConnected,
@@ -686,6 +762,18 @@ class AdminRepository
             'laravel_version' => app()->version(),
             'environment' => app()->environment(),
             'debug_mode' => config('app.debug'),
+            // Queue health
+            'queueHealth' => [
+                'failed_job_count' => $failedJobCount,
+                'has_failed_jobs' => $failedJobCount > 0,
+                'latest_failed_job' => $latestFailedJob,
+            ],
+            // Backup health
+            'backupHealth' => [
+                'backup_count' => $backupCount,
+                'last_backup_at' => $lastBackupSetting ?: $lastBackupAt,
+                'last_backup_size' => $lastBackupSize,
+            ],
         ];
     }
 

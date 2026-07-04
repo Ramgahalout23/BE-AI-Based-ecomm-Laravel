@@ -28,8 +28,10 @@ class CartController extends Controller
                 'size' => 'nullable|string',
                 'color' => 'nullable|string',
                 'variantId' => 'nullable|string',
+                'variant_id' => 'nullable|string',
             ]);
             $productId = $validated['product_id'] ?? $validated['productId'];
+            $variantId = $validated['variantId'] ?? $validated['variant_id'] ?? null;
             $item = $this->cartService->addItem(
                 $productId,
                 (int) $validated['quantity'],
@@ -37,7 +39,7 @@ class CartController extends Controller
                 null,
                 $validated['size'] ?? null,
                 $validated['color'] ?? null,
-                $validated['variantId'] ?? null
+                $variantId
             );
             return response()->json(['success' => true, 'message' => 'Added to cart', 'data' => $item], 201);
         } catch (AppError $e) { return $e->render(); }

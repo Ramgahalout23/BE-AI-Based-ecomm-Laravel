@@ -5,8 +5,10 @@ namespace App\Services;
 use App\Repositories\AuthRepository;
 use App\Services\SMSService;
 use App\Services\EmailService;
+use App\Services\WebhookService;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Log;
 use App\Exceptions\AppError;
 use App\Models\User;
 
@@ -15,7 +17,8 @@ class AuthService
     public function __construct(
         protected AuthRepository $authRepository,
         protected EmailService $emailService,
-        protected SMSService $smsService
+        protected SMSService $smsService,
+        protected WebhookService $webhookService
     ) {}
 
     private function validatePassword(string $password): void
@@ -58,6 +61,19 @@ class AuthService
             );
         } catch (\Exception $e) {
             \Illuminate\Support\Facades\Log::error('Failed to send welcome email', ['error' => $e->getMessage()]);
+        }
+
+        // ── Webhook: user.registered ──
+        try {
+            $this->webhookService->dispatch('user.registered', [
+                'user_id' => $user->id,
+                'email' => $user->email,
+                'first_name' => $user->first_name,
+                'last_name' => $user->last_name,
+                'registered_at' => now()->toIso8601String(),
+            ]);
+        } catch (\Exception $e) {
+            Log::error('[Webhook] Failed to dispatch user.registered', ['error' => $e->getMessage()]);
         }
 
         return [

@@ -36,11 +36,32 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Pusher Configuration (alternative to Node.js WebSocket server)
+    |--------------------------------------------------------------------------
+    |
+    | Used when the admin selects 'Pusher' as the realtime driver.
+    | Works on shared hosting — no Node.js server needed.
+    | Create a free account at https://pusher.com → Channels → Create App
+    |
+    */
+    'pusher' => [
+        'app_id' => env('PUSHER_APP_ID'),
+        'key' => env('PUSHER_APP_KEY'),
+        'secret' => env('PUSHER_APP_SECRET'),
+        'options' => [
+            'cluster' => env('PUSHER_APP_CLUSTER', 'mt1'),
+            'useTLS' => true,
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Socket.io Server (Node.js bridge)
     |--------------------------------------------------------------------------
     |
     | Configuration for the Node.js socket.io server that handles real-time
     | WebSocket connections. Laravel POSTs events here via the SocketService.
+    | Used when the admin selects 'WebSocket' as the realtime driver.
     |
     | server_url: Full URL of the Node.js server (e.g. https://api.example.com)
     | internal_key: Shared secret key for inter-server authentication

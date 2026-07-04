@@ -9,8 +9,11 @@ use App\Services\SocketService;
 use App\Services\NotificationService;
 use App\Services\EmailService;
 use App\Services\SMSService;
+use App\Services\NotificationTemplateService;
+use App\Services\WebhookService;
 use App\Models\Product;
 use App\Models\ProductVariant;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -33,7 +36,9 @@ class OrderService
         protected SocketService $socketService,
         protected NotificationService $notificationService,
         protected EmailService $emailService,
-        protected SMSService $smsService
+        protected SMSService $smsService,
+        protected NotificationTemplateService $notificationTemplateService,
+        protected WebhookService $webhookService
     ) {}
 
     public function createOrder(string $userId, array $data): array
@@ -55,15 +60,16 @@ class OrderService
             $shippingAddressId = $address->id;
         }
 
-        // Pre-load variants for all products in the order (avoid N+1)
+        // Pre-load variants and products for all items in the order (avoid N+1)
         $productIds = collect($data['items'])->pluck('product_id')->unique()->toArray();
         $variantsByProduct = ProductVariant::whereIn('product_id', $productIds)
             ->orderBy('quantity', 'desc')
             ->get()
             ->groupBy('product_id');
+        $productsById = Product::whereIn('id', $productIds)->get()->keyBy('id');
 
         // Wrap all DB writes in a transaction for atomicity (matching TS CheckoutService)
-        $order = DB::transaction(function () use ($data, $userId, $total, $orderNumber, $shippingAddressId, $variantsByProduct) {
+        $order = DB::transaction(function () use ($data, $userId, $total, $orderNumber, $shippingAddressId, $variantsByProduct, $productsById) {
             $order = $this->orderRepository->create([
                 'order_number' => $orderNumber,
                 'user_id' => $userId,
@@ -101,8 +107,8 @@ class OrderService
                     $variantId = $variant->id;
                     $variantDeductions[$variant->id] = ($variantDeductions[$variant->id] ?? 0) + $item['quantity'];
                 } else {
-                    // No variants — fall back to product-level stock
-                    $product = Product::where('id', $item['product_id'])->first();
+                    // No variants — fall back to product-level stock (pre-loaded above)
+                    $product = $productsById->get($item['product_id']);
                     if (!$product || $product->quantity < $item['quantity']) {
                         $productName = $product ? $product->name : 'Product';
                         $availableStock = $product ? $product->quantity : 0;
@@ -170,37 +176,75 @@ class OrderService
             return $order;
         });
 
-        // Send order confirmation email (fire-and-forget, matching TS behavior)
-        $this->sendOrderConfirmationEmail($order, $data['items'], $total);
+        // ── Webhook: order.created (queued) ──
+        \App\Jobs\DispatchWebhookJob::dispatch('order.created', [
+            'order_id' => $order->id,
+            'order_number' => $order->order_number,
+            'user_id' => $userId,
+            'total' => (float) $total,
+            'status' => $order->status,
+            'items_count' => count($data['items']),
+        ]);
 
-        // Send order confirmation SMS (fire-and-forget)
-        $this->sendOrderConfirmationSMS($order, $total);
+        // Load the user once — all notification helpers share the same user
+        $user = \App\Models\User::find($userId);
+
+        // Send order confirmation email (queued)
+        if ($user) {
+            $this->sendOrderConfirmationEmail($order, $user, $data['items'], $total);
+        }
+
+        // Send order confirmation SMS (queued)
+        if ($user) {
+            $this->sendOrderConfirmationSMS($order, $user, $total);
+        }
 
         // If COD auto-confirmed, also send status update notifications
-        if (($data['payment_method'] ?? '') === 'COD') {
-            $this->sendOrderStatusUpdateSMS($order, 'CONFIRMED');
-            $this->sendOrderStatusUpdateEmail($order, 'CONFIRMED');
+        if (($data['payment_method'] ?? '') === 'COD' && $user) {
+            $this->sendOrderStatusUpdateSMS($order, $user, 'CONFIRMED');
+            $this->sendOrderStatusUpdateEmail($order, $user, 'CONFIRMED');
         }
 
-        // Emit real-time socket event for admin sidebar badge updates
+        // Emit real-time socket event for admin sidebar badge updates (queued)
+        \App\Jobs\EmitSocketEventJob::dispatch('order:created', [
+            'orderId' => $order->id,
+            'orderNumber' => $order->order_number,
+            'status' => $order->status,
+            'userId' => $userId,
+            'timestamp' => now()->toIso8601String(),
+            'summary' => ['total' => (float) $total],
+        ]);
+
+        // Also fire the local Laravel event for internal listeners
         try {
-            $this->socketService->emitOrderUpdate('order:created', [
-                'orderId' => $order->id,
-                'orderNumber' => $order->order_number,
-                'status' => $order->status,
-                'userId' => $userId,
-                'timestamp' => now()->toIso8601String(),
-                'summary' => ['total' => (float) $total],
-            ]);
+            event(new \App\Events\OrderCreated(['orderId' => $order->id, 'orderNumber' => $order->order_number]));
         } catch (\Exception $e) {
-            Log::error('Failed to emit order:created socket event', ['error' => $e->getMessage()]);
+            Log::error('Failed to fire OrderCreated event', ['error' => $e->getMessage()]);
         }
 
-        return $order->fresh()->load('items.product', 'payment')->toArray();
+        // Return the created order with images loaded and imageUrl mapped (for consistency,
+        // though the checkout page navigates to /order/thank-you/{id} immediately)
+        $orderArray = $order->fresh()->load('items.product.images', 'payment')->toArray();
+
+        // Map imageUrl onto each item, matching getOrder() and getUserOrders() patterns
+        if (isset($orderArray['items']) && is_array($orderArray['items'])) {
+            foreach ($orderArray['items'] as &$item) {
+                $item['imageUrl'] = $item['product']['images'][0]['url'] ?? $item['image_url'] ?? null;
+            }
+            unset($item);
+        }
+
+        return $orderArray;
     }
 
     public function getOrder(string $orderId): array
     {
+        // Check the cache first — the thank-you page may re-fetch after Razorpay verification
+        $cached = Cache::get('order_' . $orderId);
+        if ($cached !== null) {
+            return $cached;
+        }
+
         $order = $this->orderRepository->findWithDetails($orderId);
         if (!$order) throw AppError::notFound('Order not found');
 
@@ -253,6 +297,7 @@ class OrderService
             foreach ($data['items'] as &$item) {
                 $item['variantId']   = $item['variant_id'] ?? null;
                 $item['productName'] = $item['product']['name'] ?? $item['name'] ?? 'Product';
+                $item['imageUrl']    = $item['product']['images'][0]['url'] ?? $item['image_url'] ?? null;
                 $item['createdAt']   = $item['created_at'] ?? null;
                 if (isset($item['product']) && is_array($item['product'])) {
                     $item['product']['createdAt'] = $item['product']['created_at'] ?? null;
@@ -279,6 +324,9 @@ class OrderService
             unset($entry);
         }
 
+        // Cache the fully-mapped response for 3 minutes
+        Cache::put('order_' . $orderId, $data, now()->addMinutes(3));
+
         return $data;
     }
 
@@ -301,7 +349,18 @@ class OrderService
     {
         $order = $this->orderRepository->findByOrderNumber($orderNumber);
         if (!$order) throw AppError::notFound('Order not found');
-        return $order->toArray();
+
+        $data = $order->toArray();
+
+        // Map imageUrl onto items for consistency
+        if (isset($data['items']) && is_array($data['items'])) {
+            foreach ($data['items'] as &$item) {
+                $item['imageUrl'] = $item['product']['images'][0]['url'] ?? $item['image_url'] ?? null;
+            }
+            unset($item);
+        }
+
+        return $data;
     }
 
     public function getUserOrders(string $userId, array $filters = []): array
@@ -309,14 +368,23 @@ class OrderService
         $paginator = $this->orderRepository->getUserOrders($userId, $filters);
         $result = $paginator->toArray();
 
-        // Map snake_case DB fields to camelCase for frontend
+        // Map snake_case DB fields to camelCase for frontend and add imageUrl to items
         if (isset($result['data']) && is_array($result['data'])) {
             $result['data'] = array_map(function ($order) {
                 $order['createdAt']   = $order['created_at'] ?? null;
-                $order['updatedAt']   = $order['updated_at'] ?? null;
                 $order['totalAmount'] = $order['total'] ?? 0;
                 $order['orderNumber'] = $order['order_number'] ?? null;
-                $order['userId']      = $order['user_id'] ?? null;
+
+                // Map imageUrl, productName, productId onto items for consistency with getOrder()
+                if (isset($order['items']) && is_array($order['items'])) {
+                    foreach ($order['items'] as &$item) {
+                        $item['imageUrl']    = $item['product']['images'][0]['url'] ?? $item['image_url'] ?? null;
+                        $item['productName'] = $item['product']['name'] ?? $item['name'] ?? null;
+                        $item['productId']   = $item['product_id'] ?? null;
+                    }
+                    unset($item);
+                }
+
                 return $order;
             }, $result['data']);
         }
@@ -338,6 +406,15 @@ class OrderService
             $data['updatedAt']   = $data['updated_at'] ?? null;
             $data['userId']      = $data['user_id'] ?? null;
             $data['totalAmount'] = $data['total'] ?? 0;
+
+            // Map imageUrl onto items for consistency
+            if (isset($data['items']) && is_array($data['items'])) {
+                foreach ($data['items'] as &$item) {
+                    $item['imageUrl'] = $item['product']['images'][0]['url'] ?? $item['image_url'] ?? null;
+                }
+                unset($item);
+            }
+
             return $data;
         });
 
@@ -362,13 +439,42 @@ class OrderService
 
         $updated = $this->orderRepository->updateStatus($orderId, $newStatus);
 
-        // Send status update SMS (fire-and-forget, matching TS behavior)
-        $this->sendOrderStatusUpdateSMS($updated, $newStatus);
+        // Invalidate cache AFTER the DB update to avoid a race where stale data is re-cached
+        Cache::forget('order_' . $orderId);
 
-        // Send status update email (fire-and-forget, matching TS behavior)
-        $this->sendOrderStatusUpdateEmail($updated, $newStatus);
+        // ── Webhook: order.status_updated (queued) ──
+        \App\Jobs\DispatchWebhookJob::dispatch('order.status_updated', [
+            'order_id' => $order->id,
+            'order_number' => $order->order_number,
+            'previous_status' => $order->status,
+            'new_status' => $newStatus,
+            'user_id' => $order->user_id,
+        ]);
 
-        return $updated->load('items.product')->toArray();
+        // Load the user once — both notification helpers share the same user
+        $user = \App\Models\User::find($updated->user_id);
+
+        // Send status update SMS (queued)
+        if ($user) {
+            $this->sendOrderStatusUpdateSMS($updated, $user, $newStatus);
+        }
+
+        // Send status update email (queued)
+        if ($user) {
+            $this->sendOrderStatusUpdateEmail($updated, $user, $newStatus);
+        }
+
+        $updatedArray = $updated->load('items.product.images')->toArray();
+
+        // Map imageUrl onto items for consistency
+        if (isset($updatedArray['items']) && is_array($updatedArray['items'])) {
+            foreach ($updatedArray['items'] as &$item) {
+                $item['imageUrl'] = $item['product']['images'][0]['url'] ?? $item['image_url'] ?? null;
+            }
+            unset($item);
+        }
+
+        return $updatedArray;
     }
 
     public function cancelOrder(string $orderId, ?string $reason = null): array
@@ -381,7 +487,7 @@ class OrderService
 
         // Restore stock when cancelling — batch restoration
         // Eager load items to avoid N+1 query
-        $order->load('items');
+        $order->load('items.product.images');
         $orderItems = $order->items;
         $variantRestores = [];  // [variantId => quantity]
         $productRestores = [];  // [productId => quantity]
@@ -427,7 +533,29 @@ class OrderService
             'notes' => $reason,
         ]);
 
-        return $updated->toArray();
+        // Invalidate cache AFTER the DB update
+        Cache::forget('order_' . $orderId);
+
+        // ── Webhook: order.cancelled (queued) ──
+        \App\Jobs\DispatchWebhookJob::dispatch('order.cancelled', [
+            'order_id' => $order->id,
+            'order_number' => $order->order_number,
+            'user_id' => $order->user_id,
+            'reason' => $reason,
+        ]);
+
+        // Load items with images on the fresh instance and map imageUrl for consistency
+        $updated->load('items.product.images');
+        $updatedArray = $updated->toArray();
+
+        if (isset($updatedArray['items']) && is_array($updatedArray['items'])) {
+            foreach ($updatedArray['items'] as &$item) {
+                $item['imageUrl'] = $item['product']['images'][0]['url'] ?? $item['image_url'] ?? null;
+            }
+            unset($item);
+        }
+
+        return $updatedArray;
     }
 
     public function getRevenueStats(?\DateTime $startDate = null, ?\DateTime $endDate = null): array
@@ -569,21 +697,26 @@ class OrderService
         // Update order status
         $this->orderRepository->updateStatus($orderId, 'RETURN_REQUESTED');
 
+        // ── Webhook: order.return_requested (queued) ──
+        \App\Jobs\DispatchWebhookJob::dispatch('order.return_requested', [
+            'order_id' => $order->id,
+            'order_number' => $order->order_number,
+            'user_id' => $userId,
+            'reason' => $reason,
+        ]);
+
         return ['order_id' => $orderId, 'reason' => $reason, 'status' => 'PENDING', 'message' => 'Return request submitted'];
     }
 
     /**
      * Send order confirmation email asynchronously (matching TS behavior)
      */
-    private function sendOrderConfirmationEmail($order, array $items, float $total): void
+    private function sendOrderConfirmationEmail($order, \App\Models\User $user, array $items, float $total): void
     {
         try {
             $emailEnabled = $this->emailService->isEmailEnabled();
             $templateActive = $this->emailService->isTemplateActive('orderConfirmation');
             if (!$emailEnabled || !$templateActive) return;
-
-            $user = \App\Models\User::find($order->user_id);
-            if (!$user) return;
 
             // Get product names
             $productIds = array_column($items, 'product_id');
@@ -615,12 +748,20 @@ class OrderService
                 ]
             );
 
-            // Create in-app notification
+            // Create in-app notification from template
+            $notifRendered = $this->notificationTemplateService->renderTemplate('notif_order_confirmed', [
+                'customerName' => $user->first_name . ' ' . $user->last_name,
+                'orderNumber' => $order->order_number,
+                'total' => number_format($total, 2),
+            ]);
+            $notifTitle = ($notifRendered['rendered'] ?? false) ? $notifRendered['title'] : 'Order Confirmed 🎉';
+            $notifMessage = ($notifRendered['rendered'] ?? false) ? $notifRendered['message'] : "Your order {$order->order_number} has been placed successfully. Total: $" . number_format($total, 2);
+
             $this->notificationService->create(
                 $order->user_id,
                 'ORDER',
-                'Order Confirmed 🎉',
-                "Your order {$order->order_number} has been placed successfully. Total: $" . number_format($total, 2),
+                $notifTitle,
+                $notifMessage,
                 ['orderId' => $order->id, 'orderNumber' => $order->order_number]
             );
         } catch (\Exception $e) {
@@ -631,14 +772,17 @@ class OrderService
     /**
      * Send order confirmation SMS asynchronously (matching TS behavior)
      */
-    private function sendOrderConfirmationSMS($order, float $total): void
+    private function sendOrderConfirmationSMS($order, \App\Models\User $user, float $total): void
     {
         try {
             $smsEnabled = $this->smsService->isSmsEnabled();
             if (!$smsEnabled) return;
 
-            $user = \App\Models\User::find($order->user_id);
-            if (!$user || !$user->phone_number) return;
+            if (!$user->phone_number) return;
+
+            // Check if template is active before sending
+            $templateActive = $this->notificationTemplateService->isTemplateActive('sms_order_confirmation');
+            if (!$templateActive) return;
 
             $this->smsService->sendOrderConfirmationSMS(
                 $user->phone_number,
@@ -654,14 +798,22 @@ class OrderService
     /**
      * Send order status update SMS asynchronously (matching TS behavior)
      */
-    private function sendOrderStatusUpdateSMS($order, string $newStatus): void
+    private function sendOrderStatusUpdateSMS($order, \App\Models\User $user, string $newStatus): void
     {
         try {
             $smsEnabled = $this->smsService->isSmsEnabled();
             if (!$smsEnabled) return;
 
-            $user = \App\Models\User::find($order->user_id);
-            if (!$user || !$user->phone_number) return;
+            if (!$user->phone_number) return;
+
+            // Check the specific status template is active
+            $templateId = match ($newStatus) {
+                'SHIPPED' => 'sms_order_shipped',
+                'DELIVERED' => 'sms_order_delivered',
+                'CANCELLED' => 'sms_order_cancelled',
+                default => 'sms_order_status_update',
+            };
+            if (!$this->notificationTemplateService->isTemplateActive($templateId)) return;
 
             $this->smsService->sendOrderStatusUpdateSMS(
                 $user->phone_number,
@@ -677,15 +829,12 @@ class OrderService
     /**
      * Send order status update email asynchronously (matching TS behavior)
      */
-    private function sendOrderStatusUpdateEmail($order, string $newStatus): void
+    private function sendOrderStatusUpdateEmail($order, \App\Models\User $user, string $newStatus): void
     {
         try {
             $emailEnabled = $this->emailService->isEmailEnabled();
             $templateActive = $this->emailService->isTemplateActive('orderStatusUpdate');
             if (!$emailEnabled || !$templateActive) return;
-
-            $user = \App\Models\User::find($order->user_id);
-            if (!$user) return;
 
             $this->emailService->sendOrderStatusUpdate(
                 $user->email,

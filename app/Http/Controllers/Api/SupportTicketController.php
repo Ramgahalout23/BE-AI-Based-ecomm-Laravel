@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Api\Traits\MapsCamelCaseFields;
 use App\Services\TicketService;
 use App\Exceptions\AppError;
 use Illuminate\Http\JsonResponse;
@@ -11,6 +12,7 @@ use Illuminate\Support\Facades\Auth;
 
 class SupportTicketController extends Controller
 {
+    use MapsCamelCaseFields;
     public function __construct(protected TicketService $ticketService) {}
 
     public function index(): JsonResponse
@@ -28,6 +30,11 @@ class SupportTicketController extends Controller
     public function store(Request $request): JsonResponse
     {
         try {
+            $input = $this->mapCamelCase($request->all(), [
+                'orderId' => 'order_id',
+            ]);
+            $request->replace($input);
+
             $validated = $request->validate(['subject' => 'required|string|max:255', 'message' => 'nullable|string', 'order_id' => 'nullable|string', 'priority' => 'nullable|string|in:LOW,MEDIUM,HIGH,URGENT']);
             $ticket = $this->ticketService->create(Auth::id(), $validated);
             return response()->json(['success' => true, 'message' => 'Ticket created', 'data' => $ticket], 201);

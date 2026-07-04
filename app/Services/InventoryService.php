@@ -180,23 +180,28 @@ class InventoryService
         // Add variant-only items that weren't in inventory results
         foreach ($products as $p) {
             if (in_array($p->id, $existingIds)) {
-                // Enrich existing inventory entry with variant info
+                // Enrich existing inventory entry with variant info + flat name/quantity
                 foreach ($result as &$entry) {
                     if (isset($entry['product_id']) && $entry['product_id'] === $p->id) {
-                        $entry['effective_stock'] = $p->variants->isNotEmpty()
+                        $entry['name'] = $p->name;
+                        $entry['quantity'] = $p->variants->isNotEmpty()
                             ? $p->variants->sum('quantity')
                             : ($entry['available_quantity'] ?? 0);
+                        $entry['effective_stock'] = $entry['quantity'];
                         $entry['variants_count'] = $p->variants->count();
                         break;
                     }
                 }
             } else {
+                $totalStock = $p->variants->sum('quantity');
                 // Add entry for variant-only product in backward-compatible shape
                 $result[] = [
                     'product_id' => $p->id,
+                    'name' => $p->name,
                     'product_name' => $p->name,
-                    'effective_stock' => $p->variants->sum('quantity'),
-                    'available_quantity' => $p->variants->sum('quantity'),
+                    'quantity' => $totalStock,
+                    'effective_stock' => $totalStock,
+                    'available_quantity' => $totalStock,
                     'variants_count' => $p->variants->count(),
                 ];
             }
@@ -238,9 +243,9 @@ class InventoryService
             if (in_array($p->id, $existingIds)) {
                 foreach ($result as &$entry) {
                     if (isset($entry['product_id']) && $entry['product_id'] === $p->id) {
-                        $entry['effective_stock'] = $p->variants->isNotEmpty()
-                            ? $p->variants->sum('quantity')
-                            : ($entry['available_quantity'] ?? 0);
+                        $entry['name'] = $p->name;
+                        $entry['quantity'] = 0;
+                        $entry['effective_stock'] = 0;
                         $entry['variants_count'] = $p->variants->count();
                         break;
                     }
@@ -248,7 +253,9 @@ class InventoryService
             } else {
                 $result[] = [
                     'product_id' => $p->id,
+                    'name' => $p->name,
                     'product_name' => $p->name,
+                    'quantity' => 0,
                     'effective_stock' => 0,
                     'available_quantity' => 0,
                     'variants_count' => $p->variants->count(),
@@ -368,19 +375,19 @@ class InventoryService
      */
     public function getStats(): array
     {
-        $totalVariantStock = (int) ProductVariant::sum('quantity');
-
-        // Exclude inventory for products that have variants (variant stock is source of truth for those)
         $variantProductIds = ProductVariant::distinct('product_id')->pluck('product_id');
-        $inventoryWithoutVariants = (int) \App\Models\Inventory::whereNotIn('product_id', $variantProductIds)->sum('available_quantity');
-
         $productsWithVariants = $variantProductIds->count();
-        $totalProducts = $this->inventoryRepository->count();
+
+        // Bug 1 fix: count actual products, not inventory records
+        $totalProducts = \App\Models\Product::count();
         $productsWithoutVariants = $totalProducts - $productsWithVariants;
 
-        $totalAvailable = $totalVariantStock + $inventoryWithoutVariants;
+        // Bug 2 fix: total available = variant stock + product.quantity for non-variant products
+        $totalVariantStock = (int) ProductVariant::sum('quantity');
+        $totalSimpleStock = (int) \App\Models\Product::whereNotIn('id', $variantProductIds)->sum('quantity');
+        $totalAvailable = $totalVariantStock + $totalSimpleStock;
 
-        // Count low-stock / out-of-stock products based on variant stock
+        // Low stock — products with variants (sum of variant quantity > 0 and <= 5)
         $lowStockVariants = ProductVariant::select('product_id')
             ->selectRaw('SUM(quantity) as total_stock')
             ->groupBy('product_id')
@@ -389,6 +396,7 @@ class InventoryService
             ->get()
             ->count();
 
+        // Out of stock — products with variants (sum of variant quantity <= 0)
         $outOfStockVariants = ProductVariant::select('product_id')
             ->selectRaw('SUM(quantity) as total_stock')
             ->groupBy('product_id')
@@ -396,11 +404,21 @@ class InventoryService
             ->get()
             ->count();
 
+        // Bug 3 fix: low stock / out of stock for non-variant products (use product.quantity)
+        $lowStockSimple = \App\Models\Product::whereNotIn('id', $variantProductIds)
+            ->where('quantity', '>', 0)
+            ->where('quantity', '<=', 5)
+            ->count();
+
+        $outOfStockSimple = \App\Models\Product::whereNotIn('id', $variantProductIds)
+            ->where('quantity', '<=', 0)
+            ->count();
+
         return [
             'total_products' => $totalProducts,
             'total_available' => $totalAvailable,
-            'low_stock' => $lowStockVariants,
-            'out_of_stock' => $outOfStockVariants,
+            'low_stock' => $lowStockVariants + $lowStockSimple,
+            'out_of_stock' => $outOfStockVariants + $outOfStockSimple,
             'variant_managed' => $productsWithVariants,
             'product_managed' => $productsWithoutVariants,
         ];

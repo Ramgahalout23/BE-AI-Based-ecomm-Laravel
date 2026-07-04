@@ -34,6 +34,11 @@ class ReviewService
             throw AppError::validation('Review comment is required');
         }
 
+        // Handle images array — pass raw array, Eloquent's `json` cast handles encoding
+        if (isset($data['images']) && is_array($data['images'])) {
+            $data['images'] = array_values(array_filter($data['images'], fn($v) => !empty($v)));
+        }
+
         // Check if product exists
         $product = Product::find($data['product_id']);
         if (!$product) {

@@ -6,10 +6,15 @@ use App\Models\Payment;
 use App\Models\OrderTimeline;
 use App\Exceptions\AppError;
 use App\Models\Setting;
+use App\Services\WebhookService;
 use Illuminate\Support\Facades\Log;
 
 class CustomGatewayService
 {
+    public function __construct(
+        protected WebhookService $webhookService
+    ) {}
+
     /**
      * Get all settings as key-value map.
      */
@@ -156,6 +161,22 @@ class CustomGatewayService
                     'status' => 'CONFIRMED',
                     'description' => 'Payment received via custom gateway webhook',
                 ]);
+
+                // ── Webhook: payment.completed ──
+                try {
+                    $this->webhookService->dispatch('payment.completed', [
+                        'payment_id' => $payment->id,
+                        'order_id' => $orderId,
+                        'transaction_id' => $transactionId,
+                        'method' => $payment->method,
+                        'amount' => (float) $payment->amount,
+                        'status' => 'COMPLETED',
+                        'completed_at' => now()->toIso8601String(),
+                    ]);
+                } catch (\Exception $e) {
+                    Log::error('[Webhook] Failed to dispatch payment.completed', ['error' => $e->getMessage()]);
+                }
+
                 Log::info("Custom gateway webhook: payment success for order {$orderId}");
                 break;
 

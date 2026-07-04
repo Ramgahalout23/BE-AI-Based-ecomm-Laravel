@@ -10,32 +10,67 @@ use Illuminate\Support\Str;
 
 class CheckoutService
 {
-    // Configurable tax rate and shipping defaults — can be overridden via settings
-    protected float $taxRate = 0.10;         // 10%
-    protected float $freeShippingThreshold = 100;
-    protected float $standardShippingCost = 10;
-    protected float $expressShippingCost = 15;
-    protected float $expressSurcharge = 5;
-
     public function __construct(
         protected CartRepository $cartRepository,
         protected OrderRepository $orderRepository,
-        protected CouponRepository $couponRepository
+        protected CouponRepository $couponRepository,
+        protected SettingsService $settingsService,
+        protected FlashSaleService $flashSaleService
     ) {}
+
+    protected function getTaxRate(): float
+    {
+        return (float) ($this->settingsService->get('taxRate', '10.0')) / 100;
+    }
+
+    protected function getFreeShippingThreshold(): float
+    {
+        return (float) ($this->settingsService->get('freeShippingThreshold', '100'));
+    }
+
+    protected function getStandardShippingCost(): float
+    {
+        return (float) ($this->settingsService->get('shippingFlatRate', '10'));
+    }
 
     public function getSummary(string $userId): array
     {
         $items = $this->cartRepository->getUserCart($userId);
         $subtotal = $items->sum(fn($item) => ($item->product?->price ?? 0) * $item->quantity);
-        $tax = $subtotal * $this->taxRate;
-        $shipping = $subtotal >= $this->freeShippingThreshold ? 0 : $this->standardShippingCost;
+        $taxRate = $this->getTaxRate();
+        $tax = $subtotal * $taxRate;
+        $freeShippingThreshold = $this->getFreeShippingThreshold();
+        $standardShippingCost = $this->getStandardShippingCost();
+        $shipping = $subtotal >= $freeShippingThreshold ? 0 : $standardShippingCost;
+
+        $itemsArray = $items->load('product.images')->toArray();
+
+        // Map flat imageUrl onto each item for consistency with order endpoints
+        foreach ($itemsArray as &$item) {
+            $item['imageUrl'] = $item['product']['images'][0]['url'] ?? $item['image_url'] ?? null;
+        }
+        unset($item);
+
+        // Build plain items array for flash sale matching
+        $plainItems = $itemsArray;
+        foreach ($plainItems as &$plainItem) {
+            $plainItem['product_id'] = $plainItem['product']['id'] ?? $plainItem['product_id'] ?? null;
+            $plainItem['category_id'] = $plainItem['product']['category_id'] ?? null;
+            $plainItem['price'] = $plainItem['product']['price'] ?? $plainItem['price'] ?? 0;
+        }
+        unset($plainItem);
+
+        $flashSaleDiscounts = $this->flashSaleService->getApplicableDiscounts($plainItems);
 
         return [
-            'items' => $items->load('product.images')->toArray(),
+            'items' => $itemsArray,
             'subtotal' => $subtotal,
             'tax' => $tax,
             'shipping' => $shipping,
-            'total' => $subtotal + $tax + $shipping,
+            'flashSaleDiscount' => $flashSaleDiscounts['total_discount'],
+            'flashSaleDiscountItems' => $flashSaleDiscounts['items_discount'],
+            'flashSalePromotions' => $flashSaleDiscounts['flash_sales'],
+            'total' => $subtotal + $tax + $shipping - $flashSaleDiscounts['total_discount'],
             'item_count' => $items->sum('quantity'),
         ];
     }
@@ -44,15 +79,17 @@ class CheckoutService
     {
         $items = $this->cartRepository->getUserCart($userId);
         $subtotal = $items->sum(fn($item) => ($item->product?->price ?? 0) * $item->quantity);
-        $standardCost = $subtotal >= $this->freeShippingThreshold ? 0 : $this->standardShippingCost;
-        $expressCost = $subtotal >= $this->freeShippingThreshold ? $this->expressSurcharge : $this->expressShippingCost;
+        $freeShippingThreshold = $this->getFreeShippingThreshold();
+        $standardShippingCost = $this->getStandardShippingCost();
+        $standardCost = $subtotal >= $freeShippingThreshold ? 0 : $standardShippingCost;
+        $expressCost = $subtotal >= $freeShippingThreshold ? 0 : $standardShippingCost + 5;
 
         return [
             'standard' => ['cost' => $standardCost, 'estimated_days' => '5-7'],
             'express' => ['cost' => $expressCost, 'estimated_days' => '2-3'],
-            'free_threshold' => $this->freeShippingThreshold,
+            'free_threshold' => $freeShippingThreshold,
             'current_subtotal' => $subtotal,
-            'free_shipping_remaining' => max(0, $this->freeShippingThreshold - $subtotal),
+            'free_shipping_remaining' => max(0, $freeShippingThreshold - $subtotal),
         ];
     }
 
@@ -90,9 +127,17 @@ class CheckoutService
 
         $subtotal = $items->sum(fn($item) => ($item->product?->price ?? 0) * $item->quantity);
 
+        $itemsArray = $items->load('product.images')->toArray();
+
+        // Map flat imageUrl onto each item for consistency
+        foreach ($itemsArray as &$item) {
+            $item['imageUrl'] = $item['product']['images'][0]['url'] ?? $item['image_url'] ?? null;
+        }
+        unset($item);
+
         return [
             'session_id' => (string) Str::uuid(),
-            'items' => $items->load('product.images')->toArray(),
+            'items' => $itemsArray,
             'subtotal' => $subtotal,
             'status' => 'INITIATED',
         ];

@@ -33,6 +33,13 @@ class Kernel extends ConsoleKernel
 
         // ── Guest User Cleanup (delete/anonymize placeholder accounts) ──
         $schedule->command('guest-users:cleanup --days=30')->dailyAt('03:00');
+
+        // ── Export File Cleanup (delete export CSVs older than 30 days) ──
+        $schedule->command('exports:cleanup --days=30')->dailyAt('03:30');
+
+        // ── Abandoned Cart Reminders ──
+        // Send email + DB notification reminders for carts abandoned >2 hours
+        $schedule->command('abandoned-carts:process --hours=2')->everyFifteenMinutes();
     }
 
     /**

@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Payment;
 use App\Models\OrderTimeline;
+use App\Services\WebhookService;
 use App\Exceptions\AppError;
 use Illuminate\Support\Facades\Log;
 use Razorpay\Api\Api;
@@ -14,6 +15,10 @@ class RazorpayService
     private ?Api $api = null;
     private ?string $keyId = null;
     private ?string $keySecret = null;
+
+    public function __construct(
+        protected WebhookService $webhookService
+    ) {}
 
     /**
      * Initialize Razorpay SDK with credentials from settings or config.
@@ -148,6 +153,22 @@ class RazorpayService
                 'status' => 'CONFIRMED',
                 'description' => 'Payment received and verified via Razorpay',
             ]);
+
+            // ── Webhook: payment.completed ──
+            try {
+                $this->webhookService->dispatch('payment.completed', [
+                    'payment_id' => $payment->id,
+                    'order_id' => $orderId,
+                    'transaction_id' => $razorpayPaymentId,
+                    'method' => 'RAZORPAY',
+                    'amount' => (float) $payment->amount,
+                    'razorpay_order_id' => $razorpayOrderId,
+                    'status' => 'COMPLETED',
+                    'completed_at' => now()->toIso8601String(),
+                ]);
+            } catch (\Exception $e) {
+                Log::error('[Webhook] Failed to dispatch payment.completed', ['error' => $e->getMessage()]);
+            }
 
             Log::info("Razorpay payment verified: {$razorpayPaymentId} for order: {$orderId}");
 

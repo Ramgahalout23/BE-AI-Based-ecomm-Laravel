@@ -12,6 +12,21 @@ use Illuminate\Support\Facades\DB;
 class RefundService
 {
     /**
+     * Acceptable return reasons as per company policy.
+     */
+    const ACCEPTABLE_REASONS = ['wrong_size', 'defective', 'wrong_item', 'not_delivered'];
+
+    /**
+     * Non-acceptable reasons that should be flagged.
+     */
+    const NON_ACCEPTABLE_REASONS = ['changed_mind', 'worn_item', 'missing_tags', 'sale_item'];
+
+    /**
+     * Return window in days.
+     */
+    const RETURN_WINDOW_DAYS = 7;
+
+    /**
      * Create a refund request for an order item.
      */
     public function createRefundRequest(string $orderId, string $userId, array $data): RefundRequest
@@ -32,7 +47,7 @@ class RefundService
     }
 
     /**
-     * Create a return request.
+     * Create a return request with policy validation.
      */
     public function createReturnRequest(string $orderId, string $userId, array $data): ReturnRequest
     {
@@ -42,13 +57,42 @@ class RefundService
             throw AppError::validation('Returns are only available for delivered or shipped orders');
         }
 
+        // Check 7-day return window
+        if ($order->delivered_at) {
+            $daysSinceDelivery = now()->diffInDays($order->delivered_at);
+            if ($daysSinceDelivery > self::RETURN_WINDOW_DAYS) {
+                throw AppError::validation('Return window has expired. Returns must be requested within ' . self::RETURN_WINDOW_DAYS . ' days of delivery.');
+            }
+        }
+
+        // Validate reason against policy
+        $reason = $data['reason'] ?? '';
+        if (in_array($reason, self::NON_ACCEPTABLE_REASONS)) {
+            throw AppError::validation('This reason is not eligible for return per our policy. Please contact support for assistance.');
+        }
+
+        // Determine if order was on sale/discount
+        $wasOnSale = !empty($data['was_on_sale']) || (isset($order->discount) && $order->discount > 0);
+        if ($wasOnSale && $reason !== 'defective') {
+            throw AppError::validation('Sale and discounted items are not eligible for return unless defective.');
+        }
+
+        // Validate return_type against reason
+        $returnType = $data['return_type'] ?? 'exchange';
+        if ($reason === 'wrong_size' && !in_array($returnType, ['exchange', 'replacement'])) {
+            throw AppError::validation('Size issues: we offer exchange or replacement. Cash refunds are not available for size exchanges per policy.');
+        }
+        if (in_array($reason, ['defective', 'wrong_item']) && !in_array($returnType, ['exchange', 'replacement', 'refund'])) {
+            throw AppError::validation('For defective or wrong items, we offer exchange, replacement, or refund.');
+        }
+
         return ReturnRequest::create([
             'order_id' => $orderId,
             'user_id' => $userId,
-            'reason' => $data['reason'],
+            'reason' => $reason,
             'description' => $data['description'] ?? null,
+            'return_type' => $returnType,
             'refund_amount' => $data['refund_amount'] ?? null,
-            'refund_to_wallet' => $data['refund_to_wallet'] ?? false,
             'status' => 'PENDING',
         ]);
     }
@@ -132,20 +176,26 @@ class RefundService
     /**
      * Admin: approve a return request and optionally process refund to wallet.
      */
-    public function approveReturnRequest(string $returnRequestId, string $adminId, ?string $adminResponse = null): ReturnRequest
+    public function approveReturnRequest(string $returnRequestId, string $adminId, ?string $adminResponse = null, ?string $resolution = null): ReturnRequest
     {
-        return DB::transaction(function () use ($returnRequestId, $adminId, $adminResponse) {
+        return DB::transaction(function () use ($returnRequestId, $adminId, $adminResponse, $resolution) {
             $request = ReturnRequest::findOrFail($returnRequestId);
 
             if ($request->status !== 'PENDING') {
                 throw AppError::validation('Return request has already been processed');
             }
 
-            $request->update([
+            $updateData = [
                 'status' => 'APPROVED',
                 'admin_response' => $adminResponse,
                 'processed_at' => now(),
-            ]);
+            ];
+
+            if ($resolution) {
+                $updateData['resolution'] = $resolution;
+            }
+
+            $request->update($updateData);
 
             return $request->fresh();
         });
@@ -182,15 +232,9 @@ class RefundService
                 throw AppError::validation('Return must be approved before completing');
             }
 
-            // If refund to wallet, process it
-            if ($request->refund_to_wallet && $request->refund_amount > 0) {
-                $walletService = app(WalletService::class);
-                $walletService->recharge(
-                    $request->user_id,
-                    (float) $request->refund_amount,
-                    "Refund for return request #{$request->id}",
-                    $request->order_id
-                );
+            // Refund processing placeholder (implement payment gateway refund here if needed)
+            if ($request->refund_amount > 0) {
+                Log::info("[RefundService] Refund of {$request->refund_amount} for return #{$request->id} ready to process.");
             }
 
             $request->update([
@@ -200,6 +244,21 @@ class RefundService
 
             return $request->fresh();
         });
+    }
+
+    /**
+     * Admin: get a single return request with full details.
+     */
+    public function getReturnRequestDetail(string $id): ?ReturnRequest
+    {
+        return ReturnRequest::with([
+            'user',
+            'order.items',
+            'order.shippingAddress',
+            'order.billingAddress',
+            'order.payment',
+            'order.shipping',
+        ])->find($id);
     }
 
     /**

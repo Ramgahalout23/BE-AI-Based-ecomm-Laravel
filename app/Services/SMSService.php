@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Jobs\SendSmsJob;
 use App\Models\Setting;
+use App\Services\NotificationTemplateService;
 use Illuminate\Support\Facades\Log;
 use Twilio\Rest\Client;
 
@@ -15,6 +16,10 @@ class SMSService
     private array $settings = [];
     private int $lastSettingsFetch = 0;
     private const SETTINGS_CACHE_TTL = 300; // 5 minutes
+
+    public function __construct(
+        protected NotificationTemplateService $notificationTemplateService
+    ) {}
 
     /**
      * Check if SMS is enabled in settings.
@@ -128,7 +133,11 @@ class SMSService
      */
     public function sendOTP(string $phoneNumber, string $otpCode): bool
     {
-        $body = "Your verification code is: {$otpCode}. This code expires in 5 minutes. Do not share this with anyone.";
+        $rendered = $this->notificationTemplateService->renderTemplate('sms_otp', [
+            'otpCode' => $otpCode,
+            'expiryMinutes' => '5',
+        ]);
+        $body = ($rendered['rendered'] ?? false) ? $rendered['body'] : "Your verification code is: {$otpCode}. This code expires in 5 minutes. Do not share this with anyone.";
         return $this->sendSMS($phoneNumber, $body);
     }
 
@@ -137,7 +146,12 @@ class SMSService
      */
     public function sendOrderConfirmationSMS(string $phoneNumber, string $customerName, string $orderNumber, float $total): bool
     {
-        $body = "Hi {$customerName}, your order {$orderNumber} is confirmed! Total: \$" . number_format($total, 2) . ". We'll notify you when it ships. Thank you for shopping with us!";
+        $rendered = $this->notificationTemplateService->renderTemplate('sms_order_confirmation', [
+            'customerName' => $customerName,
+            'orderNumber' => $orderNumber,
+            'total' => number_format($total, 2),
+        ]);
+        $body = ($rendered['rendered'] ?? false) ? $rendered['body'] : "Hi {$customerName}, your order {$orderNumber} is confirmed! Total: $" . number_format($total, 2) . ". We'll notify you when it ships. Thank you for shopping with us!";
         return $this->sendSMS($phoneNumber, $body);
     }
 
@@ -153,6 +167,26 @@ class SMSService
         ];
         $label = $statusLabels[$newStatus] ?? $newStatus;
 
+        // Try the specific status template first, fall back to generic
+        $templateId = match ($newStatus) {
+            'SHIPPED' => 'sms_order_shipped',
+            'DELIVERED' => 'sms_order_delivered',
+            'CANCELLED' => 'sms_order_cancelled',
+            default => 'sms_order_status_update',
+        };
+
+        $rendered = $this->notificationTemplateService->renderTemplate($templateId, [
+            'customerName' => $customerName,
+            'orderNumber' => $orderNumber,
+            'newStatus' => $newStatus,
+            'statusLabel' => $label,
+        ]);
+
+        if ($rendered['rendered'] ?? false) {
+            return $this->sendSMS($phoneNumber, $rendered['body']);
+        }
+
+        // Fallback to hardcoded if template is inactive
         $body = match ($newStatus) {
             'SHIPPED' => "Hi {$customerName}, your order {$orderNumber} has been shipped! Track your package in your account dashboard.",
             'DELIVERED' => "Hi {$customerName}, your order {$orderNumber} has been delivered! We hope you love your purchase.",
@@ -162,6 +196,8 @@ class SMSService
 
         return $this->sendSMS($phoneNumber, $body);
     }
+
+
 
     /**
      * Get or create Twilio client.

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Api\Traits\MapsCamelCaseFields;
 use App\Services\AuthService;
 use App\Exceptions\AppError;
 use Illuminate\Http\JsonResponse;
@@ -12,6 +13,8 @@ use Laravel\Socialite\Facades\Socialite;
 
 class AuthController extends Controller
 {
+    use MapsCamelCaseFields;
+
     public function __construct(
         protected AuthService $authService
     ) {}
@@ -19,6 +22,13 @@ class AuthController extends Controller
     public function register(Request $request): JsonResponse
     {
         try {
+            $input = $this->mapCamelCase($request->all(), [
+                'firstName' => 'first_name',
+                'lastName' => 'last_name',
+                'phoneNumber' => 'phone_number',
+            ]);
+            $request->replace($input);
+
             $validated = $request->validate([
                 'first_name' => 'required|string|max:255',
                 'last_name' => 'required|string|max:255',
@@ -66,6 +76,13 @@ class AuthController extends Controller
     public function updateProfile(Request $request): JsonResponse
     {
         try {
+            $input = $this->mapCamelCase($request->all(), [
+                'firstName' => 'first_name',
+                'lastName' => 'last_name',
+                'phoneNumber' => 'phone_number',
+            ]);
+            $request->replace($input);
+
             $validated = $request->validate([
                 'first_name' => 'sometimes|string|max:255',
                 'last_name' => 'sometimes|string|max:255',
@@ -83,6 +100,12 @@ class AuthController extends Controller
     public function changePassword(Request $request): JsonResponse
     {
         try {
+            $input = $this->mapCamelCase($request->all(), [
+                'currentPassword' => 'current_password',
+                'newPassword' => 'new_password',
+            ]);
+            $request->replace($input);
+
             $validated = $request->validate([
                 'current_password' => 'required|string',
                 'new_password' => 'required|string|min:8',

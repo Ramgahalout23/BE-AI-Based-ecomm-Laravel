@@ -15,11 +15,15 @@
         "laravel/sanctum": "^3.3",
         "laravel/socialite": "^5.27",
         "laravel/tinker": "^2.7",
+        "picqer/php-barcode-generator": "^2.4",
+        "pusher/pusher-php-server": "^7.2",
         "razorpay/razorpay": "^2.9",
         "twilio/sdk": "^8.11"
     },
     "require-dev": {
+        "barryvdh/laravel-debugbar": "^3.14",
         "fakerphp/faker": "^1.9.1",
+        "filp/whoops": "*",
         "laravel/pint": "^1.0",
         "laravel/sail": "^1.0.1",
         "mockery/mockery": "^1.4.4",

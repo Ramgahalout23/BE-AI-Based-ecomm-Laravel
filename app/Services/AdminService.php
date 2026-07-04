@@ -38,6 +38,37 @@ class AdminService
         return $metrics;
     }
 
+    /**
+     * Get ALL dashboard data in one consolidated response.
+     * This replaces 14+ individual API calls with a single endpoint,
+     * dramatically reducing network overhead on dashboard load.
+     */
+    public function getFullDashboard(?string $startDate = null, ?string $endDate = null): array
+    {
+        // All data is individually cached (300s TTL) via AdminRepository
+        // but fetched together so the frontend only makes 1 HTTP round trip
+        $metrics        = $this->adminRepository->getDashboardMetrics($startDate, $endDate);
+        $health         = $this->adminRepository->getSystemHealth();
+        $logs           = $this->getActivityLogs(8);
+        $orders         = $this->adminRepository->getRecentOrders(8);
+        $orderStatus    = $this->adminRepository->getOrderStatusDistribution();
+        $topProducts    = $this->adminRepository->getProductAnalytics(5);
+        $revenueComp    = $this->adminRepository->getRevenueComparison();
+        $customerGrowth = $this->adminRepository->getCustomerGrowth(12);
+        $hourlyDist     = $this->adminRepository->getHourlyDistribution();
+        $paymentTrends  = $this->adminRepository->getPaymentMethodTrends(30);
+        $conversion     = $this->adminRepository->getConversionMetrics();
+        $dailySales     = $this->adminRepository->getDailySales(14);
+        $reviewAnalytics = $this->adminRepository->getReviewAnalytics(30);
+        $lowStock       = $this->adminRepository->getLowStockVariants();
+
+        return compact(
+            'metrics', 'health', 'logs', 'orders', 'orderStatus',
+            'topProducts', 'revenueComp', 'customerGrowth', 'hourlyDist',
+            'paymentTrends', 'conversion', 'dailySales', 'reviewAnalytics', 'lowStock'
+        );
+    }
+
     public function getRevenueTrends(int $days = 30): array
     {
         return $this->adminRepository->getRevenueTrends($days);
@@ -140,6 +171,37 @@ class AdminService
     public function getReviewAnalytics(int $days = 30): array
     {
         return $this->adminRepository->getReviewAnalytics($days);
+    }
+
+    /**
+     * Get ALL analytics data in one consolidated response.
+     * Replaces 15 individual API calls with a single endpoint,
+     * dramatically reducing network overhead on the Analytics page load.
+     */
+    public function getFullAnalytics(?string $startDate = null, ?string $endDate = null, int $days = 30): array
+    {
+        $sales               = $this->adminRepository->getSalesAnalytics($days);
+        $revenueTrends       = $this->adminRepository->getRevenueTrends($days);
+        $categoryPerformance = $this->adminRepository->getCategoryPerformance()->toArray();
+        $orderStatus         = $this->adminRepository->getOrderStatusDistribution();
+        $paymentMethods      = $this->adminRepository->getPaymentMethodStats();
+        $topCustomers        = $this->adminRepository->getTopCustomers(20)->toArray();
+        $dailySales          = $this->adminRepository->getDailySales($days);
+        $hourlyDistribution  = $this->adminRepository->getHourlyDistribution();
+        $revenueComparison   = $this->adminRepository->getRevenueComparison();
+        $customerGrowth      = $this->adminRepository->getCustomerGrowth(12);
+        $conversionMetrics   = $this->adminRepository->getConversionMetrics();
+        $paymentTrends       = $this->adminRepository->getPaymentMethodTrends($days);
+        $topProducts         = $this->adminRepository->getProductAnalytics(20)->toArray();
+        $userAnalytics       = $this->adminRepository->getUserAnalytics();
+        $dashboardSummary    = $this->getDashboardSummary($startDate, $endDate);
+
+        return compact(
+            'sales', 'revenueTrends', 'categoryPerformance', 'orderStatus',
+            'paymentMethods', 'topCustomers', 'dailySales', 'hourlyDistribution',
+            'revenueComparison', 'customerGrowth', 'conversionMetrics',
+            'paymentTrends', 'topProducts', 'userAnalytics', 'dashboardSummary'
+        );
     }
 
     public function getDashboardSummary(?string $startDate = null, ?string $endDate = null): array

@@ -182,6 +182,8 @@ class SeoController extends Controller
             'hreflang_default' => 'nullable|string|max:10',
             'enable_auto_schema' => 'nullable|in:true,false',
             'enable_indexnow' => 'nullable|in:true,false',
+            'indexnow_key' => 'nullable|string|max:128',
+            'google_site_verification' => 'nullable|string|max:255',
             'breadcrumb_separator' => 'nullable|string|max:10',
             'default_image' => 'nullable|string|max:500',
             'twitter_handle' => 'nullable|string|max:50',

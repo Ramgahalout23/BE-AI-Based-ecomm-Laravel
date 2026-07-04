@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Reel;
+use App\Models\Setting;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -15,7 +16,21 @@ class ReelController extends Controller
      */
     public function index(): JsonResponse
     {
+        // Master toggle: check if reels section is enabled
+        $reelsEnabled = Setting::where('key', 'reelsEnabled')->value('value');
+        if ($reelsEnabled === 'false' || $reelsEnabled === '0') {
+            return response()->json([
+                'success' => true,
+                'data' => [],
+            ]);
+        }
+
         $reels = Reel::where('is_active', true)
+            ->with(['products' => function ($q) {
+                $q->select('id', 'name', 'slug', 'price', 'old_price', 'rating', 'review_count', 'badge');
+            }, 'products.images' => function ($q) {
+                $q->select('id', 'product_id', 'url', 'alt')->orderBy('display_order');
+            }])
             ->orderBy('display_order')
             ->orderBy('created_at', 'desc')
             ->get()
@@ -27,6 +42,17 @@ class ReelController extends Controller
                 'imageUrl' => $reel->image_url,
                 'linkUrl' => $reel->link_url,
                 'displayOrder' => $reel->display_order,
+                'products' => $reel->products->map(fn ($p) => [
+                    'id' => $p->id,
+                    'name' => $p->name,
+                    'slug' => $p->slug,
+                    'price' => $p->price,
+                    'old_price' => $p->old_price,
+                    'rating' => $p->rating,
+                    'review_count' => $p->review_count,
+                    'badge' => $p->badge,
+                    'image_url' => $p->images->first()?->url ?? null,
+                ]),
             ]);
 
         return response()->json([
@@ -71,7 +97,7 @@ class ReelController extends Controller
      */
     public function show(string $id): JsonResponse
     {
-        $reel = Reel::findOrFail($id);
+        $reel = Reel::with('products')->findOrFail($id);
         return response()->json(['success' => true, 'data' => $reel]);
     }
 
@@ -89,9 +115,21 @@ class ReelController extends Controller
             'link_url' => 'nullable|string|max:2048',
             'display_order' => 'nullable|integer|min:0',
             'is_active' => 'nullable|boolean',
+            'product_ids' => 'nullable|array',
+            'product_ids.*' => 'string|exists:products,id',
         ]);
 
         $reel = Reel::create($validated);
+
+        if ($request->has('product_ids')) {
+            $syncData = [];
+            foreach ($request->product_ids as $i => $pid) {
+                $syncData[$pid] = ['display_order' => $i];
+            }
+            $reel->products()->sync($syncData);
+        }
+
+        $reel->load('products');
 
         return response()->json([
             'success' => true,
@@ -116,9 +154,21 @@ class ReelController extends Controller
             'link_url' => 'nullable|string|max:2048',
             'display_order' => 'nullable|integer|min:0',
             'is_active' => 'nullable|boolean',
+            'product_ids' => 'nullable|array',
+            'product_ids.*' => 'string|exists:products,id',
         ]);
 
         $reel->update($validated);
+
+        if ($request->has('product_ids')) {
+            $syncData = [];
+            foreach ($request->product_ids as $i => $pid) {
+                $syncData[$pid] = ['display_order' => $i];
+            }
+            $reel->products()->sync($syncData);
+        }
+
+        $reel->load('products');
 
         return response()->json([
             'success' => true,

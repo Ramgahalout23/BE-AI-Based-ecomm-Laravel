@@ -478,7 +478,11 @@ class AdvancedSeoService
         if ($enabled !== 'true') return false;
 
         $host = parse_url($url, PHP_URL_HOST);
-        $key = md5($host); // Simple key generation
+        // Use custom key from settings if set, otherwise fallback to md5(host)
+        $key = Setting::where('key', 'seo_indexnow_key')->value('value');
+        if (empty($key)) {
+            $key = md5($host);
+        }
 
         try {
             $response = Http::timeout(5)->post('https://api.indexnow.org/indexnow', [
@@ -513,8 +517,10 @@ class AdvancedSeoService
             'seo_google_analytics_id', 'seo_google_tag_manager_id', 'seo_facebook_pixel_id',
             'seo_organization_name', 'seo_organization_logo', 'seo_organization_url',
             'seo_social_links', 'seo_hreflang_default', 'seo_enable_auto_schema',
-            'seo_enable_indexnow', 'seo_breadcrumb_separator', 'seo_default_image',
+            'seo_enable_indexnow', 'seo_indexnow_key',
+            'seo_breadcrumb_separator', 'seo_default_image',
             'seo_twitter_handle', 'seo_auto_audit_enabled', 'seo_audit_schedule',
+            'seo_google_site_verification',
         ];
         $settings = Setting::whereIn('key', $keys)->pluck('value', 'key')->toArray();
 
@@ -529,11 +535,13 @@ class AdvancedSeoService
             'hreflang_default' => $settings['seo_hreflang_default'] ?? 'en',
             'enable_auto_schema' => $settings['seo_enable_auto_schema'] ?? 'true',
             'enable_indexnow' => $settings['seo_enable_indexnow'] ?? 'false',
+            'indexnow_key' => $settings['seo_indexnow_key'] ?? '',
             'breadcrumb_separator' => $settings['seo_breadcrumb_separator'] ?? '/',
             'default_image' => $settings['seo_default_image'] ?? '',
             'twitter_handle' => $settings['seo_twitter_handle'] ?? '',
             'auto_audit_enabled' => $settings['seo_auto_audit_enabled'] ?? 'true',
             'audit_schedule' => $settings['seo_audit_schedule'] ?? 'weekly',
+            'google_site_verification' => $settings['seo_google_site_verification'] ?? '',
         ];
     }
 
@@ -550,11 +558,13 @@ class AdvancedSeoService
             'hreflang_default' => 'seo_hreflang_default',
             'enable_auto_schema' => 'seo_enable_auto_schema',
             'enable_indexnow' => 'seo_enable_indexnow',
+            'indexnow_key' => 'seo_indexnow_key',
             'breadcrumb_separator' => 'seo_breadcrumb_separator',
             'default_image' => 'seo_default_image',
             'twitter_handle' => 'seo_twitter_handle',
             'auto_audit_enabled' => 'seo_auto_audit_enabled',
             'audit_schedule' => 'seo_audit_schedule',
+            'google_site_verification' => 'seo_google_site_verification',
         ];
 
         foreach ($map as $camelKey => $dbKey) {

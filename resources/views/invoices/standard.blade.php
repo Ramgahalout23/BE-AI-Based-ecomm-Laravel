@@ -89,7 +89,7 @@
 
     <table class="info-table">
         <tr><td class="label">Order #</td><td>{{ $order->order_number ?? $order->id }}</td></tr>
-        <tr><td class="label">Order Date</td><td>{{ $order->created_at->format('F d, Y') }}</td></tr>
+        <tr><td class="label">Order Date</td><td>@formatDate($order->created_at)</td></tr>
         <tr><td class="label">Status</td><td>{{ $order->status }}</td></tr>
         @if($order->payment)
         <tr><td class="label">Payment</td><td>{{ $order->payment->method }} — {{ $order->payment->status }}</td></tr>

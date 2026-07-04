@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Api\Traits\MapsCamelCaseFields;
 use App\Models\CampaignTemplate;
 use App\Exceptions\AppError;
 use Illuminate\Http\JsonResponse;
@@ -10,6 +11,7 @@ use Illuminate\Http\Request;
 
 class CampaignTemplateController extends Controller
 {
+    use MapsCamelCaseFields;
     public function getTemplates(Request $request): JsonResponse
     {
         return response()->json(['success' => true, 'data' => CampaignTemplate::latest()->paginate($request->input('per_page', 20))]);
@@ -25,6 +27,11 @@ class CampaignTemplateController extends Controller
     public function createTemplate(Request $request): JsonResponse
     {
         try {
+            $input = $this->mapCamelCase($request->all(), [
+                'contentHtml' => 'content_html',
+            ]);
+            $request->replace($input);
+
             $validated = $request->validate([
                 'name' => 'required|string|max:255', 'description' => 'nullable|string',
                 'category' => 'nullable|string|max:100', 'thumbnail' => 'nullable|string',
@@ -39,8 +46,14 @@ class CampaignTemplateController extends Controller
     public function updateTemplate(Request $request, string $id): JsonResponse
     {
         try {
+            $input = $this->mapCamelCase($request->all(), [
+                'contentHtml' => 'content_html',
+            ]);
+
             $template = CampaignTemplate::findOrFail($id);
-            $template->update($request->only(['name', 'description', 'category', 'thumbnail', 'content_html', 'variables', 'status']));
+            $template->update(collect($input)->only([
+                'name', 'description', 'category', 'thumbnail', 'content_html', 'variables', 'status'
+            ])->toArray());
             return response()->json(['success' => true, 'data' => $template]);
         } catch (AppError $e) { return $e->render(); }
     }

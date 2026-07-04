@@ -71,6 +71,18 @@ class PromotionService
         return $this->toCamelCase($this->promotionRepository->create($data)->toArray());
     }
 
+    public function createWithRelations(array $data, array $productIds = [], array $categoryIds = []): array
+    {
+        $promotion = $this->promotionRepository->createWithRelations($data, $productIds, $categoryIds);
+        return $this->toCamelCase($promotion->toArray());
+    }
+
+    public function updateWithRelations(string $id, array $data, ?array $productIds = null, ?array $categoryIds = null): array
+    {
+        $promotion = $this->promotionRepository->updateWithRelations($id, $data, $productIds, $categoryIds);
+        return $this->toCamelCase($promotion->toArray());
+    }
+
     public function update(string $id, array $data): array
     {
         $this->promotionRepository->findByIdOrFail($id);

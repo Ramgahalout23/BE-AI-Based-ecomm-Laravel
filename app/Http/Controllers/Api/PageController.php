@@ -98,4 +98,32 @@ class PageController extends Controller
             return response()->json(['success' => true, 'message' => 'Page deleted']);
         } catch (AppError $e) { return $e->render(); }
     }
+
+    // ── Seed Default Templates ──
+
+    /**
+     * Seed default sample page templates.
+     * POST /api/v1/admin/pages/seed-defaults
+     * Creates sample pages if they don't already exist (by slug).
+     */
+    public function seedDefaults(): JsonResponse
+    {
+        try {
+            $seeder = new \Database\Seeders\PageSeeder();
+            $seeder->run();
+
+            $count = \App\Models\Page::count();
+
+            return response()->json([
+                'success' => true,
+                'message' => "Sample pages seeded successfully. Total pages: {$count}",
+                'data' => ['total' => $count],
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to seed sample pages: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
 }

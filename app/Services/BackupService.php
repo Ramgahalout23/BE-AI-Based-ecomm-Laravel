@@ -42,7 +42,7 @@ class BackupService
     }
 
     /**
-     * List all available backups.
+     * List all available backups, including in-progress queued/processing jobs.
      */
     public function listBackups(): array
     {
@@ -51,18 +51,44 @@ class BackupService
 
         foreach ($files as $file) {
             $filePath = $this->backupDir . '/' . $file;
-            if (is_file($filePath)) {
+
+            // ── Completed .sql backup files ──
+            if (is_file($filePath) && pathinfo($file, PATHINFO_EXTENSION) === 'sql') {
                 $backups[] = [
                     'filename' => $file,
                     'size' => filesize($filePath),
                     'size_formatted' => $this->formatSize(filesize($filePath)),
                     'created_at' => date('Y-m-d H:i:s', filemtime($filePath)),
                     'status' => 'completed',
+                    'backup_id' => null,
                 ];
+                continue;
+            }
+
+            // ── In-progress job directories (bkp-<uuid>) ──
+            if (is_dir($filePath) && str_starts_with($file, 'bkp-')) {
+                $statusPath = $filePath . '/status.txt';
+                if (file_exists($statusPath)) {
+                    $status = trim(file_get_contents($statusPath));
+                    if (in_array($status, ['queued', 'processing'], true)) {
+                        $resultPath = $filePath . '/result.json';
+                        $backups[] = [
+                            'filename' => $file,
+                            'size' => null,
+                            'size_formatted' => '—',
+                            'created_at' => date('Y-m-d H:i:s', filemtime($statusPath)),
+                            'status' => $status,
+                            'backup_id' => $file,
+                        ];
+                    }
+                }
             }
         }
 
-        return array_reverse($backups);
+        // Sort by created_at descending (newest first)
+        usort($backups, fn($a, $b) => strcmp($b['created_at'], $a['created_at']));
+
+        return $backups;
     }
 
     /**

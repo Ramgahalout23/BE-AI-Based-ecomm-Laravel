@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Services\ProductVariantService;
 use App\Exceptions\AppError;
+use App\Models\Product;
 use App\Models\ProductVariant;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -70,7 +71,88 @@ class ProductVariantController extends Controller
     {
         $query = ProductVariant::with('product:id,name');
         if ($request->has('search')) { $s = $request->search; $query->where(function ($q) use ($s) { $q->where('sku', 'like', "%{$s}%")->orWhere('name', 'like', "%{$s}%"); }); }
+        if ($request->has('product_id')) { $query->where('product_id', $request->product_id); }
         return response()->json(['success' => true, 'data' => $query->latest()->paginate($request->input('per_page', 20))]);
+    }
+
+    /**
+     * Look up a variant (or product) by SKU — used by barcode scanner.
+     * GET /api/v1/admin/variants/lookup-sku/{sku}
+     */
+    public function lookupBySku(string $sku): JsonResponse
+    {
+        try {
+            // First try variant-level SKU (most granular)
+            $variant = ProductVariant::with('product:id,name,sku,price,quantity')
+                ->where('sku', $sku)
+                ->first();
+
+            if ($variant) {
+                $attrs = $variant->attributes ?? [];
+                if (is_string($attrs)) $attrs = json_decode($attrs, true) ?? [];
+
+                return response()->json([
+                    'success' => true,
+                    'data' => [
+                        'type' => 'variant',
+                        'id' => $variant->id,
+                        'name' => $variant->name,
+                        'sku' => $variant->sku,
+                        'quantity' => (int) $variant->quantity,
+                        'price' => $variant->price,
+                        'attributes' => $attrs,
+                        'product_id' => $variant->product_id,
+                        'product_name' => $variant->product?->name,
+                        'product_sku' => $variant->product?->sku,
+                    ],
+                ]);
+            }
+
+            // Fallback: try product-level SKU
+            $product = Product::where('sku', $sku)->first();
+
+            if ($product) {
+                // Check if product has variants — if so, return the first variant or indicate multi-variant
+                $variants = ProductVariant::where('product_id', $product->id)->get();
+
+                if ($variants->isNotEmpty()) {
+                    // Return product with variants list for selection
+                    return response()->json([
+                        'success' => true,
+                        'data' => [
+                            'type' => 'product_with_variants',
+                            'id' => $product->id,
+                            'name' => $product->name,
+                            'sku' => $product->sku,
+                            'quantity' => (int) $variants->sum('quantity'),
+                            'variants' => $variants->map(fn($v) => [
+                                'id' => $v->id,
+                                'name' => $v->name,
+                                'sku' => $v->sku,
+                                'quantity' => (int) $v->quantity,
+                                'price' => $v->price,
+                            ]),
+                        ],
+                    ]);
+                }
+
+                return response()->json([
+                    'success' => true,
+                    'data' => [
+                        'type' => 'product',
+                        'id' => $product->id,
+                        'name' => $product->name,
+                        'sku' => $product->sku,
+                        'quantity' => (int) $product->quantity,
+                        'price' => $product->price,
+                    ],
+                ]);
+            }
+
+            throw AppError::notFound("No variant or product found with SKU: {$sku}");
+        } catch (AppError $e) { return $e->render(); } catch (\Exception $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
     }
 
     public function bulkCreateVariants(Request $request, string $productId): JsonResponse

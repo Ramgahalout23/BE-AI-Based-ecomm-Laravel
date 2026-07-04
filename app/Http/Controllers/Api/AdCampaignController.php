@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Api\Traits\MapsCamelCaseFields;
 use App\Services\AdAnalyticsService;
 use App\Services\AIAdCopyService;
 use App\Services\MetaAdsService;
@@ -17,6 +18,18 @@ use Illuminate\Support\Collection;
 
 class AdCampaignController extends Controller
 {
+    use MapsCamelCaseFields;
+
+    private array $fieldMappings = [
+        'startDate' => 'start_date',
+        'endDate' => 'end_date',
+        'creativeUrl' => 'creative_url',
+        'creativeType' => 'creative_type',
+        'landingUrl' => 'landing_url',
+        'targetAudience' => 'target_audience',
+        'platformCampaignId' => 'platform_campaign_id',
+        'lastSyncedAt' => 'last_synced_at',
+    ];
     protected AdAnalyticsService $analyticsService;
     protected AIAdCopyService $aiAdCopyService;
     protected MetaAdsService $metaAdsService;
@@ -189,7 +202,7 @@ class AdCampaignController extends Controller
     {
         try {
             // Map frontend camelCase to backend snake_case
-            $input = $this->mapCampaignFields($request->all());
+            $input = $this->mapCamelCase($request->all(), $this->fieldMappings);
             $request->replace($input);
 
             $validated = $request->validate([
@@ -210,7 +223,7 @@ class AdCampaignController extends Controller
     {
         try {
             // Map frontend camelCase to backend snake_case
-            $input = $this->mapCampaignFields($request->all());
+            $input = $this->mapCamelCase($request->all(), $this->fieldMappings);
 
             $campaign = AdCampaign::findOrFail($id);
             $campaign->update(collect($input)->only([
@@ -236,33 +249,6 @@ class AdCampaignController extends Controller
             $result = $this->analyticsService->compareCampaigns($id1, $id2);
             return response()->json(['success' => true, 'data' => $result]);
         } catch (\Exception $e) { return response()->json(['success' => false, 'message' => $e->getMessage()], 404); }
-    }
-
-    /**
-     * Map frontend camelCase campaign field names to backend snake_case.
-     */
-    private function mapCampaignFields(array $input): array
-    {
-        $map = [
-            'startDate' => 'start_date',
-            'endDate' => 'end_date',
-            'creativeUrl' => 'creative_url',
-            'creativeType' => 'creative_type',
-            'landingUrl' => 'landing_url',
-            'targetAudience' => 'target_audience',
-            'platformCampaignId' => 'platform_campaign_id',
-            'lastSyncedAt' => 'last_synced_at',
-        ];
-
-        $result = [];
-        foreach ($input as $key => $value) {
-            $snakeKey = $map[$key] ?? $key;
-            // Don't pass raw camelCase keys that have a mapping
-            if ($snakeKey !== $key || !isset($map[$key])) {
-                $result[$snakeKey] = $value;
-            }
-        }
-        return $result;
     }
 
     // ── AI Copy Generation ──

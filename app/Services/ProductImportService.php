@@ -2,18 +2,103 @@
 
 namespace App\Services;
 
+use App\Exceptions\AppError;
+use App\Models\Brand;
+use App\Models\Category;
 use App\Models\Product;
 use App\Models\ProductImage;
 use App\Models\ProductVariant;
-use App\Models\Category;
-use App\Models\Brand;
-use App\Exceptions\AppError;
-use Illuminate\Support\Str;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 class ProductImportService
 {
+    /**
+     * The list of expected/internal field names for product import.
+     */
+    public function getExpectedFields(): array
+    {
+        return [
+            'name', 'description', 'short_description', 'price', 'old_price', 'cost',
+            'quantity', 'sku', 'barcode', 'category', 'brand', 'images', 'tags', 'status',
+            'badge', 'is_featured', 'seo_title', 'seo_description', 'seo_keywords',
+            'variant_sku', 'variant_color', 'variant_size', 'variant_price', 'variant_quantity',
+        ];
+    }
+
+    /**
+     * Build a suggested automatic column mapping based on CSV headers.
+     * Matches CSV headers to expected fields case-insensitively.
+     */
+    public function suggestColumnMapping(array $csvHeaders): array
+    {
+        $expected = $this->getExpectedFields();
+        $mapping = [];
+        $headerIndex = [];
+        foreach ($csvHeaders as $h) {
+            $headerIndex[strtolower(trim($h))] = $h;
+        }
+
+        // Try to match each expected field to a CSV header
+        foreach ($expected as $field) {
+            $normalized = strtolower(preg_replace('/[^a-z0-9]/', '', $field));
+            $bestMatch = null;
+            $bestScore = 0;
+
+            foreach ($headerIndex as $lowerH => $origH) {
+                $normalizedH = strtolower(preg_replace('/[^a-z0-9]/', '', $origH));
+                // Exact match
+                if ($lowerH === $field || $lowerH === str_replace('_', '', $field)) {
+                    $bestMatch = $origH;
+                    $bestScore = 100;
+                    break;
+                }
+                // Contains match
+                if (str_contains($normalizedH, $normalized) || str_contains($normalized, $normalizedH)) {
+                    $score = strlen($normalized) / max(strlen($normalizedH), strlen($normalized)) * 80;
+                    if ($score > $bestScore) {
+                        $bestScore = $score;
+                        $bestMatch = $origH;
+                    }
+                }
+            }
+
+            if ($bestMatch && $bestScore >= 60) {
+                $mapping[$bestMatch] = $field;
+            }
+        }
+
+        return $mapping;
+    }
+
+    /**
+     * Remap CSV header row according to a column mapping.
+     * The mapping is {csv_column_name: expected_field_name}.
+     * Returns modified CSV content with remapped headers.
+     */
+    public function remapCSVHeaders(string $csvContent, array $columnMapping): string
+    {
+        $lines = explode("\n", $csvContent);
+        if (empty($lines)) {
+            return $csvContent;
+        }
+
+        $headers = $this->parseCSVLine($lines[0]);
+        $remapped = [];
+        foreach ($headers as $h) {
+            $trimmed = trim($h);
+            if (isset($columnMapping[$trimmed])) {
+                $remapped[] = $columnMapping[$trimmed];
+            } else {
+                $remapped[] = $trimmed;
+            }
+        }
+        $lines[0] = implode(',', $remapped);
+
+        return implode("\n", $lines);
+    }
+
     /**
      * Parse a single CSV line, respecting quoted fields.
      */
@@ -26,8 +111,8 @@ class ProductImportService
         for ($i = 0; $i < strlen($line); $i++) {
             $char = $line[$i];
             if ($char === '"') {
-                $inQuotes = !$inQuotes;
-            } elseif ($char === ',' && !$inQuotes) {
+                $inQuotes = ! $inQuotes;
+            } elseif ($char === ',' && ! $inQuotes) {
                 $result[] = trim($current);
                 $current = '';
             } else {
@@ -59,12 +144,12 @@ class ProductImportService
         $required = ['name', 'price', 'quantity'];
         $missing = [];
         foreach ($required as $col) {
-            if (!isset($headerMap[$col])) {
+            if (! isset($headerMap[$col])) {
                 $missing[] = $col;
             }
         }
-        if (!empty($missing)) {
-            throw AppError::validation('CSV missing required columns: ' . implode(', ', $missing));
+        if (! empty($missing)) {
+            throw AppError::validation('CSV missing required columns: '.implode(', ', $missing));
         }
 
         $rows = [];
@@ -72,13 +157,16 @@ class ProductImportService
             $cols = $this->parseCSVLine($lines[$i]);
             $get = function (string $key) use ($headerMap, $cols) {
                 $key = strtolower($key);
+
                 return isset($headerMap[$key]) && $headerMap[$key] < count($cols)
                     ? trim($cols[$headerMap[$key]])
                     : null;
             };
 
             $name = $get('name');
-            if (empty($name)) continue;
+            if (empty($name)) {
+                continue;
+            }
 
             $imageUrls = $get('images');
             $rows[] = [
@@ -90,6 +178,7 @@ class ProductImportService
                 'cost' => $get('cost') ? (float) $get('cost') : null,
                 'quantity' => (int) ($get('quantity') ?? 0),
                 'sku' => $get('sku'),
+                'barcode' => $get('barcode'),
                 'category' => $get('category'),
                 'brand' => $get('brand'),
                 'images' => $imageUrls ? array_filter(array_map('trim', explode(',', $imageUrls))) : [],
@@ -147,25 +236,29 @@ class ProductImportService
                 if (empty($row['name'])) {
                     $result['skipped']++;
                     $result['error_details'][] = ['row' => $rowNum, 'message' => 'Missing product name'];
+
                     continue;
                 }
                 if ($row['price'] <= 0) {
                     $result['skipped']++;
                     $result['error_details'][] = ['row' => $rowNum, 'message' => "Invalid price for \"{$row['name']}\""];
+
                     continue;
                 }
                 if ($row['quantity'] < 0) {
                     $result['skipped']++;
                     $result['error_details'][] = ['row' => $rowNum, 'message' => "Invalid quantity for \"{$row['name']}\""];
+
                     continue;
                 }
 
                 // Check for duplicate SKU
-                if (!empty($row['sku'])) {
+                if (! empty($row['sku'])) {
                     $existing = Product::where('sku', $row['sku'])->exists();
                     if ($existing) {
                         $result['skipped']++;
                         $result['error_details'][] = ['row' => $rowNum, 'message' => "SKU \"{$row['sku']}\" already exists"];
+
                         continue;
                     }
                 }
@@ -177,10 +270,10 @@ class ProductImportService
 
                 // Generate slug
                 $baseSlug = Str::slug($row['name']);
-                $slug = $baseSlug . '-' . substr(md5(uniqid()), 0, 8);
+                $slug = $baseSlug.'-'.substr(md5(uniqid()), 0, 8);
 
                 // Generate SKU if not provided
-                $sku = !empty($row['sku']) ? $row['sku'] : strtoupper(substr($row['name'], 0, 3)) . '-' . substr(md5(uniqid()), 0, 6);
+                $sku = ! empty($row['sku']) ? $row['sku'] : strtoupper(substr($row['name'], 0, 3)).'-'.substr(md5(uniqid()), 0, 6);
 
                 DB::beginTransaction();
 
@@ -195,6 +288,7 @@ class ProductImportService
                         'cost' => $row['cost'] ?? null,
                         'quantity' => $row['quantity'] ?? 0,
                         'sku' => $sku,
+                        'barcode' => $row['barcode'] ?? null,
                         'badge' => $row['badge'] ?? null,
                         'tags' => $row['tags'] ?? null,
                         'is_featured' => $row['is_featured'] ?? false,
@@ -207,7 +301,7 @@ class ProductImportService
                     ]);
 
                     // Create product images
-                    if (!empty($row['images'])) {
+                    if (! empty($row['images'])) {
                         foreach ($row['images'] as $order => $url) {
                             ProductImage::create([
                                 'product_id' => $product->id,
@@ -221,7 +315,7 @@ class ProductImportService
                     ProductVariant::create([
                         'product_id' => $product->id,
                         'name' => $row['name'],
-                        'sku' => $sku . '-DEFAULT',
+                        'sku' => $sku.'-DEFAULT',
                         'attributes' => json_encode([]),
                         'price' => $row['price'],
                         'quantity' => $row['quantity'] ?? 0,
@@ -229,15 +323,19 @@ class ProductImportService
                     ]);
 
                     // Create variant row if variant columns were provided
-                    if (!empty($row['variant_sku']) || !empty($row['variant_color']) || !empty($row['variant_size'])) {
+                    if (! empty($row['variant_sku']) || ! empty($row['variant_color']) || ! empty($row['variant_size'])) {
                         $variantAttrs = [];
-                        if (!empty($row['variant_color'])) $variantAttrs['color'] = $row['variant_color'];
-                        if (!empty($row['variant_size'])) $variantAttrs['size'] = $row['variant_size'];
+                        if (! empty($row['variant_color'])) {
+                            $variantAttrs['color'] = $row['variant_color'];
+                        }
+                        if (! empty($row['variant_size'])) {
+                            $variantAttrs['size'] = $row['variant_size'];
+                        }
 
                         ProductVariant::create([
                             'product_id' => $product->id,
                             'name' => implode(' / ', array_filter([$row['variant_color'] ?? null, $row['variant_size'] ?? null])) ?: 'Variant',
-                            'sku' => $row['variant_sku'] ?? $sku . '-VAR',
+                            'sku' => $row['variant_sku'] ?? $sku.'-VAR',
                             'attributes' => json_encode($variantAttrs),
                             'price' => $row['variant_price'] ?? $row['price'],
                             'quantity' => $row['variant_quantity'] ?? $row['quantity'] ?? 0,
@@ -272,22 +370,30 @@ class ProductImportService
      */
     private function resolveCategory(?string $name, array &$byName, array &$bySlug): ?string
     {
-        if (empty($name)) return null;
+        if (empty($name)) {
+            return null;
+        }
 
         $lower = strtolower(trim($name));
 
-        if (isset($byName[$lower])) return $byName[$lower];
-        if (isset($bySlug[$lower])) return $bySlug[$lower];
+        if (isset($byName[$lower])) {
+            return $byName[$lower];
+        }
+        if (isset($bySlug[$lower])) {
+            return $bySlug[$lower];
+        }
 
         // Create on the fly
         try {
             $slug = Str::slug($name);
-            $category = Category::create(['name' => trim($name), 'slug' => $slug ?: 'cat-' . uniqid()]);
+            $category = Category::create(['name' => trim($name), 'slug' => $slug ?: 'cat-'.uniqid()]);
             $byName[strtolower($category->name)] = $category->id;
             $bySlug[strtolower($category->slug)] = $category->id;
+
             return $category->id;
         } catch (\Exception $e) {
             Log::warning("Could not create category \"{$name}\": {$e->getMessage()}");
+
             return null;
         }
     }
@@ -297,30 +403,161 @@ class ProductImportService
      */
     private function resolveBrand(?string $name, array &$byName): ?string
     {
-        if (empty($name)) return null;
+        if (empty($name)) {
+            return null;
+        }
 
         $lower = strtolower(trim($name));
 
-        if (isset($byName[$lower])) return $byName[$lower];
+        if (isset($byName[$lower])) {
+            return $byName[$lower];
+        }
 
         // Create on the fly
         try {
             $slug = Str::slug($name);
-            $brand = Brand::create(['name' => trim($name), 'slug' => $slug ?: 'brand-' . uniqid()]);
+            $brand = Brand::create(['name' => trim($name), 'slug' => $slug ?: 'brand-'.uniqid()]);
             $byName[strtolower($brand->name)] = $brand->id;
+
             return $brand->id;
         } catch (\Exception $e) {
             Log::warning("Could not create brand \"{$name}\": {$e->getMessage()}");
+
             return null;
         }
     }
 
     /**
-     * Import products from CSV file content.
+     * Preview a CSV import — parse and validate each row WITHOUT persisting anything.
+     * Optionally accepts a column_mapping to remap CSV columns before parsing.
+     * Returns parsed rows with per-row validation status and issues.
      */
-    public function importFromCSV(string $csvContent): array
+    public function previewImport(string $csvContent, array $columnMapping = []): array
     {
+        // Apply column remapping if provided
+        if (! empty($columnMapping)) {
+            $csvContent = $this->remapCSVHeaders($csvContent, $columnMapping);
+        }
         $rows = $this->parseCSV($csvContent);
+
+        // Pre-fetch categories and brands for resolution hints
+        $allCategories = Category::select('id', 'name', 'slug')->get();
+        $allBrands = Brand::select('id', 'name')->get();
+
+        $categoryByName = [];
+        $categoryBySlug = [];
+        foreach ($allCategories as $c) {
+            $categoryByName[strtolower($c->name)] = $c->id;
+            $categoryBySlug[strtolower($c->slug)] = $c->id;
+        }
+        $brandByName = [];
+        foreach ($allBrands as $b) {
+            $brandByName[strtolower($b->name)] = $b->id;
+        }
+
+        $previewRows = [];
+        $validCount = 0;
+        $warningCount = 0;
+        $errorCount = 0;
+
+        foreach ($rows as $idx => $row) {
+            $rowNum = $idx + 2;
+            $issues = [];
+
+            // Validate required fields
+            if (empty($row['name'])) {
+                $issues[] = ['type' => 'error', 'message' => 'Missing product name'];
+            }
+            if ($row['price'] <= 0) {
+                $issues[] = ['type' => 'error', 'message' => "Invalid price: {$row['price']}"];
+            }
+            if ($row['quantity'] < 0) {
+                $issues[] = ['type' => 'error', 'message' => "Invalid quantity: {$row['quantity']}"];
+            }
+
+            // Check for duplicate SKU
+            if (! empty($row['sku'])) {
+                $existing = Product::where('sku', $row['sku'])->exists();
+                if ($existing) {
+                    $issues[] = ['type' => 'error', 'message' => "SKU \"{$row['sku']}\" already exists"];
+                }
+            }
+
+            // Check category resolution
+            if (! empty($row['category'])) {
+                $lower = strtolower(trim($row['category']));
+                if (! isset($categoryByName[$lower]) && ! isset($categoryBySlug[$lower])) {
+                    $issues[] = ['type' => 'warning', 'message' => "Category \"{$row['category']}\" will be auto-created"];
+                }
+            }
+
+            // Check brand resolution
+            if (! empty($row['brand'])) {
+                $lower = strtolower(trim($row['brand']));
+                if (! isset($brandByName[$lower])) {
+                    $issues[] = ['type' => 'warning', 'message' => "Brand \"{$row['brand']}\" will be auto-created"];
+                }
+            }
+
+            // Determine row status
+            $rowStatus = 'valid';
+            foreach ($issues as $issue) {
+                if ($issue['type'] === 'error') {
+                    $rowStatus = 'error';
+                    break;
+                }
+                if ($issue['type'] === 'warning') {
+                    $rowStatus = 'warning';
+                }
+            }
+
+            // Count summary
+            if ($rowStatus === 'valid') {
+                $validCount++;
+            } elseif ($rowStatus === 'warning') {
+                $warningCount++;
+            } else {
+                $errorCount++;
+            }
+
+            $previewRows[] = [
+                'row_number' => $rowNum,
+                'status' => $rowStatus,
+                'issues' => $issues,
+                'data' => $row,
+            ];
+        }
+
+        // Determine headers from the first row's keys
+        $headers = ! empty($rows) ? array_keys($rows[0]) : [];
+
+        // Build suggested mapping for the frontend
+        $originalHeaders = ! empty($columnMapping) ? array_keys($columnMapping) : $headers;
+        $suggestedMapping = $this->suggestColumnMapping($originalHeaders);
+
+        return [
+            'headers' => $headers,
+            'rows' => $previewRows,
+            'total_rows' => count($rows),
+            'suggested_mapping' => $suggestedMapping,
+            'validation' => [
+                'valid' => $validCount,
+                'warnings' => $warningCount,
+                'errors' => $errorCount,
+            ],
+        ];
+    }
+
+    /**
+     * Import products from CSV file content with optional column mapping.
+     */
+    public function importFromCSV(string $csvContent, array $columnMapping = []): array
+    {
+        if (! empty($columnMapping)) {
+            $csvContent = $this->remapCSVHeaders($csvContent, $columnMapping);
+        }
+        $rows = $this->parseCSV($csvContent);
+
         return $this->importProducts($rows);
     }
 }

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Api\Traits\MapsCamelCaseFields;
 use App\Services\UserProfileService;
 use App\Exceptions\AppError;
 use Illuminate\Http\JsonResponse;
@@ -11,6 +12,7 @@ use Illuminate\Support\Facades\Auth;
 
 class UserProfileController extends Controller
 {
+    use MapsCamelCaseFields;
     public function __construct(protected UserProfileService $userProfileService) {}
 
     public function show(): JsonResponse
@@ -67,6 +69,17 @@ class UserProfileController extends Controller
     public function addAddress(Request $request): JsonResponse
     {
         try {
+            $input = $this->mapCamelCase($request->all(), [
+                'firstName' => 'first_name',
+                'lastName' => 'last_name',
+                'phoneNumber' => 'phone_number',
+                'addressLine1' => 'address_line1',
+                'addressLine2' => 'address_line2',
+                'zipCode' => 'zip_code',
+                'isDefault' => 'is_default',
+            ]);
+            $request->replace($input);
+
             $validated = $request->validate([
                 'type' => 'nullable|string|in:SHIPPING,BILLING,BOTH',
                 'first_name' => 'required|string|max:255',
@@ -88,6 +101,17 @@ class UserProfileController extends Controller
     public function updateAddress(Request $request, string $addressId): JsonResponse
     {
         try {
+            $input = $this->mapCamelCase($request->all(), [
+                'firstName' => 'first_name',
+                'lastName' => 'last_name',
+                'phoneNumber' => 'phone_number',
+                'addressLine1' => 'address_line1',
+                'addressLine2' => 'address_line2',
+                'zipCode' => 'zip_code',
+                'isDefault' => 'is_default',
+            ]);
+            $request->replace($input);
+
             $validated = $request->validate([
                 'type' => 'nullable|string|in:SHIPPING,BILLING,BOTH',
                 'first_name' => 'sometimes|string|max:255',

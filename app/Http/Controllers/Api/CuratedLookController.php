@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\CuratedLook;
+use App\Models\Setting;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -16,6 +17,15 @@ class CuratedLookController extends Controller
      */
     public function index(): JsonResponse
     {
+        // Master toggle: check if curated looks section is enabled
+        $looksEnabled = Setting::where('key', 'curatedLooksEnabled')->value('value');
+        if ($looksEnabled === 'false' || $looksEnabled === '0') {
+            return response()->json([
+                'success' => true,
+                'data' => [],
+            ]);
+        }
+
         $looks = CuratedLook::with('products.images')
             ->where('is_active', true)
             ->orderBy('display_order')

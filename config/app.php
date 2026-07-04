@@ -19,6 +19,45 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Default Store Name
+    |--------------------------------------------------------------------------
+    |
+    | This value is the default store name used throughout the application
+    | when no value has been set in the database settings table. It can
+    | be overridden via the DEFAULT_STORE_NAME environment variable.
+    |
+    */
+
+    'default_store_name' => env('DEFAULT_STORE_NAME', 'THREVOLT'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Default Date Format
+    |--------------------------------------------------------------------------
+    |
+    | This value defines the default PHP date format used for user-visible
+    | dates in generated documents like PDF invoices. Uses PHP date()
+    | format syntax (e.g., 'F d, Y' for "June 27, 2026").
+    |
+    */
+
+    'date_format' => env('DATE_FORMAT', 'F d, Y'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Default Time Format
+    |--------------------------------------------------------------------------
+    |
+    | This value defines the default PHP time format used for user-visible
+    | times in generated documents and emails. Uses PHP date() format
+    | syntax (e.g., 'h:i A' for "02:30 PM").
+    |
+    */
+
+    'time_format' => env('TIME_FORMAT', 'h:i A'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Application Environment
     |--------------------------------------------------------------------------
     |
@@ -55,6 +94,17 @@ return [
     */
 
     'url' => env('APP_URL', 'http://localhost'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Frontend URL
+    |--------------------------------------------------------------------------
+    |
+    | This URL is used for generating links that point to the frontend SPA
+    | (e.g., abandoned cart recovery links, email links).
+    |
+    */
+    'frontend_url' => env('FRONTEND_URL', env('APP_URL', 'http://localhost:5173')),
 
     'asset_url' => env('ASSET_URL'),
 
@@ -181,10 +231,6 @@ return [
         Illuminate\Translation\TranslationServiceProvider::class,
         Illuminate\Validation\ValidationServiceProvider::class,
         Illuminate\View\ViewServiceProvider::class,
-
-        /*
-         * Package Service Providers...
-         */
 
         /*
          * Application Service Providers...

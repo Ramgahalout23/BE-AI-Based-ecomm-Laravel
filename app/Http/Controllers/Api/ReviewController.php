@@ -38,9 +38,12 @@ class ReviewController extends Controller
         try {
             $validated = $request->validate([
                 'product_id' => 'required|string|exists:products,id',
+                'order_id' => 'nullable|string|exists:orders,id',
                 'rating' => 'required|integer|min:1|max:5',
                 'title' => 'nullable|string|max:255',
                 'comment' => 'nullable|string',
+                'images' => 'nullable|array',
+                'images.*' => 'nullable|string',
             ]);
             $review = $this->reviewService->create(Auth::id(), $validated);
             return response()->json(['success' => true, 'message' => 'Review submitted', 'data' => $review], 201);
@@ -142,6 +145,15 @@ class ReviewController extends Controller
      */
     public function homepage(Request $request): JsonResponse
     {
+        // Check master toggle — if reviews are disabled, return empty
+        $reviewsEnabled = \App\Models\Setting::where('key', 'reviewsEnabled')->value('value');
+        if ($reviewsEnabled === 'false' || $reviewsEnabled === '0') {
+            return response()->json([
+                'success' => true,
+                'data' => ['reviews' => [], 'pagination' => ['page' => 1, 'limit' => 0, 'total' => 0, 'pages' => 0], 'stats' => ['average_rating' => 0, 'total_reviews' => 0]],
+            ]);
+        }
+
         $page = $request->integer('page', 1);
         $limit = $request->integer('limit', 20);
 
@@ -247,6 +259,52 @@ class ReviewController extends Controller
 
     /**
      * Get approved reviews for the homepage
+
+    /**
+     * Upload a review image (authenticated users).
+     * POST /api/v1/uploads/review-image
+     */
+    public function uploadReviewImage(Request $request): JsonResponse
+    {
+        try {
+            $request->validate([
+                'file' => 'required|image|mimes:jpeg,png,jpg,webp|max:10240',
+            ]);
+
+            $result = app(\App\Services\StorageDriverService::class)->storeFile($request->file('file'), 'uploads/reviews');
+
+            return response()->json([
+                'success' => true,
+                'data' => ['url' => $result['url'], 'path' => $result['path']],
+            ]);
+        } catch (\Exception $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
+        }
+    }
+
+    /**
+     * Upload multiple review images (authenticated users).
+     * POST /api/v1/uploads/review-images
+     */
+    public function uploadReviewImages(Request $request): JsonResponse
+    {
+        try {
+            $request->validate([
+                'files' => 'required|array',
+                'files.*' => 'required|image|mimes:jpeg,png,jpg,webp|max:10240',
+            ]);
+
+            $results = app(\App\Services\StorageDriverService::class)->storeFiles($request->file('files'), 'uploads/reviews');
+            $uploaded = array_map(fn($r) => ['url' => $r['url'], 'path' => $r['path']], $results);
+
+            return response()->json([
+                'success' => true,
+                'data' => ['files' => $uploaded],
+            ]);
+        } catch (\Exception $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
+        }
+    }
 
     /**
      * Mark review as helpful.

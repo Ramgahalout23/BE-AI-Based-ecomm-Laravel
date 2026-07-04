@@ -16,7 +16,10 @@ use Illuminate\Support\Str;
 
 class CheckoutController extends Controller
 {
-    public function __construct(protected CheckoutService $checkoutService) {}
+    public function __construct(
+        protected CheckoutService $checkoutService,
+        protected \App\Services\FlashSaleService $flashSaleService
+    ) {}
 
     public function summary(): JsonResponse
     {
@@ -113,10 +116,14 @@ class CheckoutController extends Controller
             ]);
 
             // ── Build order items from request, look up prices from DB ──
+            // Batch-load all products in a single query to avoid N+1
+            $productIds = array_column($validated['items'], 'productId');
+            $products = Product::whereIn('id', $productIds)->get()->keyBy('id');
+
             $orderItems = [];
             $subtotal = 0;
             foreach ($validated['items'] as $item) {
-                $product = Product::find($item['productId']);
+                $product = $products->get($item['productId']);
                 if (!$product) {
                     return response()->json([
                         'success' => false,
@@ -132,7 +139,10 @@ class CheckoutController extends Controller
                 $subtotal += $price * (int) $item['quantity'];
             }
             $shippingCost = $subtotal >= 499 ? 0 : 50;
-            $discount = 0;
+
+            // ── Auto-apply flash sale discounts ──
+            $flashSaleResult = $this->flashSaleService->getApplicableDiscounts($orderItems);
+            $discount = $flashSaleResult['total_discount'];
 
             // ── Create the order via OrderController's store logic ──
             $orderRequest = new Request([
@@ -147,19 +157,25 @@ class CheckoutController extends Controller
             $orderController = app(OrderController::class);
             $orderResponse = $orderController->store($orderRequest);
 
-            // ── If the user explicitly opted to create an account, attach Sanctum tokens ──
-            if ($accountCreated && !empty($validated['createAccount'])) {
+            // ── Always return a Sanctum token for guest checkout users ──
+            // This allows the thank-you page to authenticate and fetch order details.
+            // The `accountCreated` flag is only set to true if the user explicitly opted in.
+            // Always generate a token, even when an existing user is reused (same email),
+            // since the guest isn't authenticated in the current browser session.
+            if ($isGuest) {
                 $token = $user->createToken('checkout-token');
                 $plainTextToken = $token->plainTextToken;
 
                 $responseData = $orderResponse->getData();
                 if (isset($responseData->data)) {
-                    $responseData->data->accountCreated = true;
+                    $responseData->data->accountCreated = !empty($validated['createAccount']);
                     $responseData->data->tokens = [
                         'accessToken' => $plainTextToken,
                         'refreshToken' => null,
                     ];
-                    $responseData->data->user = $user->toArray();
+                    if (!empty($validated['createAccount'])) {
+                        $responseData->data->user = $user->toArray();
+                    }
                 }
                 $orderResponse->setData($responseData);
             }

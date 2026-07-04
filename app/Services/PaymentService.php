@@ -3,13 +3,16 @@
 namespace App\Services;
 
 use App\Repositories\PaymentRepository;
+use App\Services\WebhookService;
 use App\Exceptions\AppError;
 use App\Models\Order;
+use Illuminate\Support\Facades\Log;
 
 class PaymentService
 {
     public function __construct(
-        protected PaymentRepository $paymentRepository
+        protected PaymentRepository $paymentRepository,
+        protected WebhookService $webhookService
     ) {}
 
     /**
@@ -20,10 +23,43 @@ class PaymentService
         // Try to load from settings (matching TS dynamic payment methods from DB)
         try {
             $settingsService = app(SettingsService::class);
-            $enabledMethods = $settingsService->get('payment_methods', []);
+
+            // Check individual payment toggles first
+            $razorpayEnabled = $settingsService->get('razorpayEnabled', 'true') === 'true';
+            $codEnabled = $settingsService->get('codEnabled', 'true') === 'true';
+
+            // Also support a combined payment_methods setting for custom gateways
+            $customMethods = $settingsService->get('payment_methods', []);
             
-            if (!empty($enabledMethods) && is_array($enabledMethods)) {
-                return $enabledMethods;
+            $methods = [];
+
+            if ($razorpayEnabled) {
+                $methods[] = [
+                    'id' => 'RAZORPAY',
+                    'name' => 'Razorpay / Cards / UPI',
+                    'description' => 'Popular Indian payment gateway supporting UPI, Netbanking & Cards',
+                ];
+            }
+
+            if ($codEnabled) {
+                $methods[] = [
+                    'id' => 'COD',
+                    'name' => 'Cash on Delivery (COD)',
+                    'description' => 'Pay with cash upon delivery of your package',
+                ];
+            }
+
+            // Merge in custom gateways from payment_methods setting
+            if (!empty($customMethods) && is_array($customMethods)) {
+                foreach ($customMethods as $cm) {
+                    if (is_array($cm) && isset($cm['id']) && !in_array($cm['id'], array_column($methods, 'id'))) {
+                        $methods[] = $cm;
+                    }
+                }
+            }
+
+            if (!empty($methods)) {
+                return $methods;
             }
         } catch (\Exception $e) {
             \Illuminate\Support\Facades\Log::warning('Failed to load payment methods from settings', ['error' => $e->getMessage()]);
@@ -83,6 +119,21 @@ class PaymentService
         // Update order status to CONFIRMED
         if ($payment->order_id) {
             Order::where('id', $payment->order_id)->update(['status' => 'CONFIRMED']);
+        }
+
+        // ── Webhook: payment.completed ──
+        try {
+            $this->webhookService->dispatch('payment.completed', [
+                'payment_id' => $payment->id,
+                'order_id' => $payment->order_id,
+                'transaction_id' => $transactionId,
+                'method' => $payment->method,
+                'amount' => (float) $payment->amount,
+                'status' => 'COMPLETED',
+                'completed_at' => now()->toIso8601String(),
+            ]);
+        } catch (\Exception $e) {
+            Log::error('[Webhook] Failed to dispatch payment.completed', ['error' => $e->getMessage()]);
         }
 
         return $updated->toArray();

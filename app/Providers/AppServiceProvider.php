@@ -2,9 +2,10 @@
 
 namespace App\Providers;
 
-use Illuminate\Support\ServiceProvider;
+use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -32,6 +33,19 @@ class AppServiceProvider extends ServiceProvider
         if ($this->app->environment('local', 'development', 'staging')) {
             $this->registerQueryLogger();
         }
+
+        // ── Date Formatting Directives ──
+        // Usage: @formatDate($date) — formats using config('app.date_format') (default: "F d, Y")
+        // Usage: @formatTime($date) — formats using config('app.time_format') (default: "h:i A")
+        // Both work with Carbon instances, date strings, or null.
+
+        Blade::directive('formatDate', function (string $expression): string {
+            return "<?php echo ((\$__d = $expression) ? \Carbon\Carbon::parse(\$__d)->format(config('app.date_format')) : '—'); ?>";
+        });
+
+        Blade::directive('formatTime', function (string $expression): string {
+            return "<?php echo ((\$__t = $expression) ? \Carbon\Carbon::parse(\$__t)->format(config('app.time_format')) : '—'); ?>";
+        });
     }
 
     /**

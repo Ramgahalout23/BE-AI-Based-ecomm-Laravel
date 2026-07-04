@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Api\Traits\MapsCamelCaseFields;
 use App\Services\PromotionService;
 use App\Exceptions\AppError;
 use Illuminate\Http\JsonResponse;
@@ -10,11 +11,23 @@ use Illuminate\Http\Request;
 
 class PromotionController extends Controller
 {
+    use MapsCamelCaseFields;
+
+    private array $fieldMappings = [
+        'imageUrl' => 'image_url',
+        'startDate' => 'start_date',
+        'endDate' => 'end_date',
+        'isActive' => 'is_active',
+        'productIds' => 'product_ids',
+        'categoryIds' => 'category_ids',
+    ];
     public function __construct(protected PromotionService $promotionService) {}
 
     public function index(): JsonResponse
     {
-        return response()->json(['success' => true, 'data' => $this->promotionService->getActive()]);
+        $active = $this->promotionService->getActive();
+        // Include a flat list of product IDs and category IDs for storefront lookup
+        return response()->json(['success' => true, 'data' => $active]);
     }
 
     public function adminIndex(Request $request): JsonResponse
@@ -47,15 +60,9 @@ class PromotionController extends Controller
     public function store(Request $request): JsonResponse
     {
         try {
-            $data = $request->all();
-            // Map camelCase payload from frontend to snake_case
-            if (isset($data['imageUrl'])) $data['image_url'] = $data['imageUrl'];
-            if (isset($data['startDate'])) $data['start_date'] = $data['startDate'];
-            if (isset($data['endDate'])) $data['end_date'] = $data['endDate'];
-            if (isset($data['isActive'])) $data['is_active'] = $data['isActive'];
-            if (isset($data['discount'])) $data['discount'] = $data['discount'];
+            $input = $this->mapCamelCase($request->all(), $this->fieldMappings);
 
-            $validated = validator($data, [
+            $validated = validator($input, [
                 'title' => 'required|string',
                 'description' => 'nullable|string',
                 'image_url' => 'nullable|string',
@@ -65,9 +72,21 @@ class PromotionController extends Controller
                 'type' => 'nullable|string',
                 'status' => 'nullable|string|in:ACTIVE,PAUSED,EXPIRED',
                 'is_active' => 'nullable|boolean',
+                'product_ids' => 'nullable|array',
+                'product_ids.*' => 'string',
+                'category_ids' => 'nullable|array',
+                'category_ids.*' => 'string',
             ])->validate();
 
-            return response()->json(['success' => true, 'message' => 'Promotion created', 'data' => $this->promotionService->create($validated)], 201);
+            $productIds = $validated['product_ids'] ?? [];
+            $categoryIds = $validated['category_ids'] ?? [];
+            unset($validated['product_ids'], $validated['category_ids']);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Promotion created',
+                'data' => $this->promotionService->createWithRelations($validated, $productIds, $categoryIds),
+            ], 201);
         } catch (AppError $e) { return $e->render(); } catch (\Illuminate\Validation\ValidationException $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage(), 'errors' => $e->errors()], 422);
         }
@@ -76,14 +95,33 @@ class PromotionController extends Controller
     public function update(Request $request, string $id): JsonResponse
     {
         try {
-            $data = $request->all();
-            // Map camelCase payload from frontend to snake_case
-            if (isset($data['imageUrl'])) $data['image_url'] = $data['imageUrl'];
-            if (isset($data['startDate'])) $data['start_date'] = $data['startDate'];
-            if (isset($data['endDate'])) $data['end_date'] = $data['endDate'];
-            if (isset($data['isActive'])) $data['is_active'] = $data['isActive'];
+            $input = $this->mapCamelCase($request->all(), $this->fieldMappings);
 
-            return response()->json(['success' => true, 'message' => 'Promotion updated', 'data' => $this->promotionService->update($id, $data)]);
+            $validated = validator($input, [
+                'title' => 'nullable|string',
+                'description' => 'nullable|string',
+                'image_url' => 'nullable|string',
+                'start_date' => 'nullable|date',
+                'end_date' => 'nullable|date|after_or_equal:start_date',
+                'discount' => 'nullable|numeric|min:0',
+                'status' => 'nullable|string|in:ACTIVE,PAUSED,EXPIRED',
+                'is_active' => 'nullable|boolean',
+                'product_ids' => 'nullable|array',
+                'product_ids.*' => 'string',
+                'category_ids' => 'nullable|array',
+                'category_ids.*' => 'string',
+            ])->validate();
+
+            // null = not provided (don't sync), [] = explicitly empty (clear all)
+            $productIds = array_key_exists('product_ids', $validated) ? ($validated['product_ids'] ?? []) : null;
+            $categoryIds = array_key_exists('category_ids', $validated) ? ($validated['category_ids'] ?? []) : null;
+            unset($validated['product_ids'], $validated['category_ids']);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Promotion updated',
+                'data' => $this->promotionService->updateWithRelations($id, $validated, $productIds, $categoryIds),
+            ]);
         } catch (AppError $e) { return $e->render(); }
     }
 

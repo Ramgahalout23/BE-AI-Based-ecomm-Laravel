@@ -2,9 +2,9 @@
 
 namespace App\Services;
 
-use App\Repositories\MarketingRepository;
 use App\Exceptions\AppError;
-use App\Services\EmailService;
+use App\Jobs\ProcessCampaignJob;
+use App\Repositories\MarketingRepository;
 use Illuminate\Support\Facades\Log;
 
 class MarketingService
@@ -12,7 +12,61 @@ class MarketingService
     public function __construct(
         protected MarketingRepository $marketingRepository,
         protected EmailService $emailService
-    ) {}
+    ) {
+    }
+
+    /**
+     * The list of expected/internal field names for subscriber import.
+     */
+    public function getSubscriberExpectedFields(): array
+    {
+        return ['email', 'name', 'phone', 'tags', 'source'];
+    }
+
+    /**
+     * Build a suggested automatic column mapping for subscriber CSV headers.
+     */
+    public function suggestSubscriberMapping(array $csvHeaders): array
+    {
+        $expected = $this->getSubscriberExpectedFields();
+        $mapping = [];
+        foreach ($csvHeaders as $h) {
+            $lower = strtolower(trim($h));
+            foreach ($expected as $field) {
+                if ($lower === $field) {
+                    $mapping[$h] = $field;
+                    break;
+                }
+                // Fuzzy: contains the word or vice versa
+                if (str_contains($lower, $field) || str_contains($field, $lower)) {
+                    $mapping[$h] = $field;
+                    break;
+                }
+            }
+        }
+
+        return $mapping;
+    }
+
+    /**
+     * Remap CSV header row according to a column mapping for subscriber CSVs.
+     */
+    public function remapSubscriberCSVHeaders(string $csvContent, array $columnMapping): string
+    {
+        $lines = explode("\n", $csvContent);
+        if (empty($lines)) {
+            return $csvContent;
+        }
+        $headers = explode(',', $lines[0]);
+        $remapped = [];
+        foreach ($headers as $h) {
+            $trimmed = trim($h);
+            $remapped[] = isset($columnMapping[$trimmed]) ? $columnMapping[$trimmed] : $trimmed;
+        }
+        $lines[0] = implode(',', $remapped);
+
+        return implode("\n", $lines);
+    }
 
     // ── Subscriber Management ──
 
@@ -24,7 +78,10 @@ class MarketingService
     public function getSubscriberById(string $id): array
     {
         $subscriber = $this->marketingRepository->findSubscriberById($id);
-        if (!$subscriber) throw AppError::notFound('Subscriber not found');
+        if (! $subscriber) {
+            throw AppError::notFound('Subscriber not found');
+        }
+
         return $subscriber->toArray();
     }
 
@@ -38,6 +95,7 @@ class MarketingService
                     'name' => $data['name'] ?? $existing->name,
                     'tags' => $data['tags'] ?? $existing->tags,
                 ]);
+
                 return $updated->toArray();
             }
             if ($existing->status === 'ACTIVE') {
@@ -52,22 +110,28 @@ class MarketingService
     public function updateSubscriber(string $id, array $data): array
     {
         $subscriber = $this->marketingRepository->findSubscriberById($id);
-        if (!$subscriber) throw AppError::notFound('Subscriber not found');
+        if (! $subscriber) {
+            throw AppError::notFound('Subscriber not found');
+        }
+
         return $this->marketingRepository->updateSubscriber($id, $data)->toArray();
     }
 
     public function deleteSubscriber(string $id): array
     {
         $subscriber = $this->marketingRepository->findSubscriberById($id);
-        if (!$subscriber) throw AppError::notFound('Subscriber not found');
+        if (! $subscriber) {
+            throw AppError::notFound('Subscriber not found');
+        }
         $this->marketingRepository->deleteSubscriber($id);
+
         return ['deleted' => true];
     }
 
     public function unsubscribeByEmail(string $email): array
     {
         $subscriber = $this->marketingRepository->findSubscriberByEmail($email);
-        if (!$subscriber) {
+        if (! $subscriber) {
             return ['unsubscribed' => true];
         }
 
@@ -76,6 +140,7 @@ class MarketingService
         }
 
         $this->marketingRepository->updateSubscriber($subscriber->id, ['status' => 'UNSUBSCRIBED']);
+
         return ['unsubscribed' => true];
     }
 
@@ -94,7 +159,10 @@ class MarketingService
     public function getCampaignById(string $id): array
     {
         $campaign = $this->marketingRepository->findCampaignById($id);
-        if (!$campaign) throw AppError::notFound('Campaign not found');
+        if (! $campaign) {
+            throw AppError::notFound('Campaign not found');
+        }
+
         return $campaign->toArray();
     }
 
@@ -106,7 +174,9 @@ class MarketingService
     public function updateCampaign(string $id, array $data): array
     {
         $campaign = $this->marketingRepository->findCampaignById($id);
-        if (!$campaign) throw AppError::notFound('Campaign not found');
+        if (! $campaign) {
+            throw AppError::notFound('Campaign not found');
+        }
 
         // Status guards — matches TypeScript logic
         if (in_array($campaign->status, ['SENT', 'SENDING'])) {
@@ -119,7 +189,9 @@ class MarketingService
     public function deleteCampaign(string $id): array
     {
         $campaign = $this->marketingRepository->findCampaignById($id);
-        if (!$campaign) throw AppError::notFound('Campaign not found');
+        if (! $campaign) {
+            throw AppError::notFound('Campaign not found');
+        }
 
         // Status guard — matches TypeScript logic
         if ($campaign->status === 'SENDING') {
@@ -127,16 +199,19 @@ class MarketingService
         }
 
         $this->marketingRepository->deleteCampaign($id);
+
         return ['deleted' => true];
     }
 
     public function duplicateCampaign(string $campaignId): array
     {
         $source = $this->marketingRepository->findCampaignById($campaignId);
-        if (!$source) throw AppError::notFound('Campaign not found');
+        if (! $source) {
+            throw AppError::notFound('Campaign not found');
+        }
 
         return $this->marketingRepository->createCampaign([
-            'name' => $source->name . ' (Copy)',
+            'name' => $source->name.' (Copy)',
             'subject' => $source->subject,
             'preheader' => $source->preheader,
             'from_name' => $source->from_name,
@@ -152,7 +227,9 @@ class MarketingService
     public function sendCampaign(string $campaignId, ?string $testEmail = null): array
     {
         $campaign = $this->marketingRepository->findCampaignById($campaignId);
-        if (!$campaign) throw AppError::notFound('Campaign not found');
+        if (! $campaign) {
+            throw AppError::notFound('Campaign not found');
+        }
 
         if ($campaign->status === 'SENT') {
             throw AppError::validation('Campaign has already been sent');
@@ -161,6 +238,7 @@ class MarketingService
         if ($testEmail) {
             // Send test email to a single address
             $this->sendSingleCampaignEmail($campaign, $testEmail);
+
             return ['sent' => true, 'type' => 'test', 'email' => $testEmail];
         }
 
@@ -185,7 +263,9 @@ class MarketingService
                 'status' => 'ACTIVE',
             ]);
 
-            if (empty($subscribers['items'])) break;
+            if (empty($subscribers['items'])) {
+                break;
+            }
 
             $subscriberIds = array_column($subscribers['items'], 'id');
             $created = $this->marketingRepository->createCampaignRecipients($campaignId, $subscriberIds);
@@ -193,8 +273,8 @@ class MarketingService
             $page++;
         }
 
-        // Process campaign sending synchronously (or could dispatch to queue)
-        $this->processCampaignSending($campaignId);
+        // Dispatch campaign processing to the queue for async handling
+        ProcessCampaignJob::dispatch($campaignId);
 
         return [
             'sent' => false,
@@ -204,89 +284,22 @@ class MarketingService
         ];
     }
 
-    public function processCampaignSending(string $campaignId): void
-    {
-        try {
-            $page = 1;
-            $pageSize = 100;
-            $totalSent = 0;
-            $totalFailed = 0;
-
-            while (true) {
-                $recipients = $this->marketingRepository->getCampaignRecipients($campaignId, $page, $pageSize);
-                if (empty($recipients['items'])) break;
-
-                foreach ($recipients['items'] as $recipient) {
-                    try {
-                        $campaign = $this->marketingRepository->findCampaignById($campaignId);
-                        if (!$campaign) break;
-
-                        $subscriberEmail = $recipient['subscriber']['email'] ?? null;
-                        if (!$subscriberEmail) {
-                            $totalFailed++;
-                            continue;
-                        }
-
-                        $success = $this->sendSingleCampaignEmail($campaign, $subscriberEmail);
-
-                        if ($success) {
-                            $this->marketingRepository->updateRecipientStatus($recipient['id'], 'SENT', [
-                                'sent_at' => now(),
-                            ]);
-                            $totalSent++;
-                        } else {
-                            $this->marketingRepository->updateRecipientStatus($recipient['id'], 'FAILED', [
-                                'error_message' => 'Email send failed',
-                            ]);
-                            $totalFailed++;
-                        }
-                    } catch (\Exception $e) {
-                        $this->marketingRepository->updateRecipientStatus($recipient['id'], 'FAILED', [
-                            'error_message' => $e->getMessage() ?: 'Unknown error',
-                        ]);
-                        $totalFailed++;
-                    }
-                }
-                $page++;
-            }
-
-            // Update campaign stats
-            $this->marketingRepository->updateCampaignStats($campaignId);
-
-            // Mark campaign as sent or failed
-            $status = $totalSent > 0 ? 'SENT' : 'FAILED';
-            $this->marketingRepository->updateCampaign($campaignId, ['status' => $status]);
-            if ($status === 'SENT') {
-                $this->marketingRepository->markCampaignAsSent($campaignId);
-            }
-
-            Log::info("Campaign {$campaignId} completed: {$totalSent} sent, {$totalFailed} failed");
-        } catch (\Exception $error) {
-            Log::error("Campaign processing error for {$campaignId}", ['error' => $error->getMessage()]);
-            $this->marketingRepository->updateCampaign($campaignId, ['status' => 'FAILED']);
-        }
-    }
-
     private function sendSingleCampaignEmail($campaign, string $toEmail): bool
     {
         try {
-            $unsubscribeUrl = url("/unsubscribe?email=" . urlencode($toEmail));
+            $unsubscribeUrl = url('/unsubscribe?email='.urlencode($toEmail));
 
             // Append unsubscribe footer (matches TS behavior)
-            $htmlWithFooter = $campaign->content_html . "
+            $htmlWithFooter = $campaign->content_html."
                 <div style=\"margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; font-size: 12px; color: #999; text-align: center;\">
                     <p>You're receiving this because you're subscribed to our newsletter.</p>
                     <p><a href=\"{$unsubscribeUrl}\" style=\"color: #999; text-decoration: underline;\">Unsubscribe</a></p>
                 </div>";
 
-            return $this->emailService->sendEmail([
-                'to' => $toEmail,
-                'subject' => $campaign->subject,
-                'html' => $htmlWithFooter,
-                'text' => $campaign->content_text,
-            ]);
+            return $this->emailService->sendEmail($toEmail, $campaign->subject, $htmlWithFooter, $campaign->content_text);
         } catch (\Exception $e) {
             Log::error("Failed to send campaign email to {$toEmail}", ['error' => $e->getMessage()]);
+
             return false;
         }
     }
@@ -294,7 +307,9 @@ class MarketingService
     public function getCampaignStats(string $campaignId): array
     {
         $campaign = $this->marketingRepository->findCampaignById($campaignId);
-        if (!$campaign) throw AppError::notFound('Campaign not found');
+        if (! $campaign) {
+            throw AppError::notFound('Campaign not found');
+        }
 
         return $this->marketingRepository->updateCampaignStats($campaignId);
     }
@@ -302,7 +317,9 @@ class MarketingService
     public function getCampaignRecipients(string $campaignId, int $page = 1, int $limit = 50): array
     {
         $campaign = $this->marketingRepository->findCampaignById($campaignId);
-        if (!$campaign) throw AppError::notFound('Campaign not found');
+        if (! $campaign) {
+            throw AppError::notFound('Campaign not found');
+        }
 
         return $this->marketingRepository->getCampaignRecipients($campaignId, $page, $limit);
     }
@@ -329,20 +346,24 @@ class MarketingService
             ];
         }, $subscribers['items']);
 
-        $csvRows = array_merge([implode(',', $headers)], array_map(fn($r) => implode(',', $r), $rows));
+        $csvRows = array_merge([implode(',', $headers)], array_map(fn ($r) => implode(',', $r), $rows));
+
         return implode("\n", $csvRows);
     }
 
     public function exportCampaignRecipientsCSV(string $campaignId): string
     {
         $campaign = $this->marketingRepository->findCampaignById($campaignId);
-        if (!$campaign) throw AppError::notFound('Campaign not found');
+        if (! $campaign) {
+            throw AppError::notFound('Campaign not found');
+        }
 
         $recipients = $this->marketingRepository->getCampaignRecipients($campaignId, 1, 1000000);
 
         $headers = ['Email', 'Name', 'Status', 'Sent At', 'Opened At', 'Clicked At', 'Error Message'];
         $rows = array_map(function ($r) {
             $subscriber = $r['subscriber'] ?? [];
+
             return [
                 $this->escapeCSV($subscriber['email'] ?? ''),
                 $this->escapeCSV($subscriber['name'] ?? ''),
@@ -354,23 +375,137 @@ class MarketingService
             ];
         }, $recipients['items']);
 
-        $csvRows = array_merge([implode(',', $headers)], array_map(fn($r) => implode(',', $r), $rows));
+        $csvRows = array_merge([implode(',', $headers)], array_map(fn ($r) => implode(',', $r), $rows));
+
         return implode("\n", $csvRows);
     }
 
     private function escapeCSV(string $val): string
     {
         if (str_contains($val, ',') || str_contains($val, '"') || str_contains($val, "\n")) {
-            return '"' . str_replace('"', '""', $val) . '"';
+            return '"'.str_replace('"', '""', $val).'"';
         }
+
         return $val;
     }
 
     // ── CSV Import ──
 
+    /**
+     * Preview a subscriber CSV import — parse and validate WITHOUT persisting.
+     * Accepts optional column_mapping to remap CSV headers before parsing.
+     */
+    public function previewImportSubscribers(string $csvContent, array $columnMapping = []): array
+    {
+        // Apply column remapping if provided
+        if (! empty($columnMapping)) {
+            $csvContent = $this->remapSubscriberCSVHeaders($csvContent, $columnMapping);
+        }
+
+        $lines = array_filter(explode("\n", str_replace("\r\n", "\n", $csvContent)), fn ($l) => trim($l) !== '');
+        if (count($lines) < 2) {
+            throw AppError::validation('CSV must have a header row and at least one data row');
+        }
+
+        $headers = array_map('trim', explode(',', strtolower(array_shift($lines))));
+        $emailIdx = array_search('email', $headers);
+        $nameIdx = array_search('name', $headers);
+        $phoneIdx = array_search('phone', $headers);
+        $tagsIdx = array_search('tags', $headers);
+        $sourceIdx = array_search('source', $headers);
+
+        if ($emailIdx === false) {
+            throw AppError::validation('CSV must contain an "email" column');
+        }
+
+        $previewRows = [];
+        $validCount = 0;
+        $warningCount = 0;
+        $errorCount = 0;
+
+        foreach ($lines as $i => $line) {
+            $rowNum = $i + 2;
+            $cols = array_map(fn ($c) => trim(str_replace(['"', "'"], '', $c)), explode(',', $line));
+            $email = isset($cols[$emailIdx]) ? strtolower($cols[$emailIdx]) : '';
+            $issues = [];
+
+            $name = $nameIdx !== false ? ($cols[$nameIdx] ?? null) : null;
+            $phone = $phoneIdx !== false ? ($cols[$phoneIdx] ?? null) : null;
+            $tags = $tagsIdx !== false ? ($cols[$tagsIdx] ?? null) : null;
+            $rawSource = $sourceIdx !== false ? strtoupper($cols[$sourceIdx] ?? '') : '';
+            $validSources = ['SIGNUP', 'IMPORT', 'ADMIN', 'CHECKOUT'];
+            $source = ($rawSource && in_array($rawSource, $validSources)) ? $rawSource : 'IMPORT';
+
+            // Validate email
+            if (! $email || ! str_contains($email, '@')) {
+                $issues[] = ['type' => 'error', 'message' => 'Invalid or missing email'];
+            } else {
+                // Check for existing subscriber
+                $existing = $this->marketingRepository->findSubscriberByEmail($email);
+                if ($existing) {
+                    $issues[] = ['type' => 'warning', 'message' => "Subscriber already exists (status: {$existing->status})"];
+                }
+            }
+
+            // Determine row status
+            $rowStatus = 'valid';
+            foreach ($issues as $issue) {
+                if ($issue['type'] === 'error') {
+                    $rowStatus = 'error';
+                    break;
+                }
+                if ($issue['type'] === 'warning') {
+                    $rowStatus = 'warning';
+                }
+            }
+
+            if ($rowStatus === 'valid') {
+                $validCount++;
+            } elseif ($rowStatus === 'warning') {
+                $warningCount++;
+            } else {
+                $errorCount++;
+            }
+
+            $previewRows[] = [
+                'row_number' => $rowNum,
+                'status' => $rowStatus,
+                'issues' => $issues,
+                'data' => [
+                    'email' => $email,
+                    'name' => $name ?? '',
+                    'phone' => $phone ?? '',
+                    'tags' => $tags ?? '',
+                    'source' => $source,
+                ],
+            ];
+        }
+
+        // Build suggested mapping from the ORIGINAL header line (not $lines which is now data rows)
+        $originalHeaders = array_map('trim', explode(',', $originalHeaderLine));
+        $suggestedMapping = $this->suggestSubscriberMapping($originalHeaders);
+
+        return [
+            'headers' => $headers,
+            'rows' => $previewRows,
+            'total_rows' => count($lines),
+            'suggested_mapping' => $suggestedMapping,
+            'validation' => [
+                'valid' => $validCount,
+                'warnings' => $warningCount,
+                'errors' => $errorCount,
+            ],
+        ];
+    }
+
     public function importSubscribersFromCSV(string $csvContent, array $options = []): array
     {
-        $lines = array_filter(explode("\n", str_replace("\r\n", "\n", $csvContent)), fn($l) => trim($l) !== '');
+        // Apply column remapping if provided
+        if (! empty($options['column_mapping'])) {
+            $csvContent = $this->remapSubscriberCSVHeaders($csvContent, $options['column_mapping']);
+        }
+
+        $lines = array_filter(explode("\n", str_replace("\r\n", "\n", $csvContent)), fn ($l) => trim($l) !== '');
         if (count($lines) < 2) {
             throw AppError::validation('CSV must have a header row and at least one data row');
         }
@@ -392,12 +527,13 @@ class MarketingService
         $errorRows = [];
 
         foreach ($lines as $i => $line) {
-            $cols = array_map(fn($c) => trim(str_replace(['"', "'"], '', $c)), explode(',', $line));
+            $cols = array_map(fn ($c) => trim(str_replace(['"', "'"], '', $c)), explode(',', $line));
             $email = isset($cols[$emailIdx]) ? strtolower($cols[$emailIdx]) : '';
 
-            if (!$email || !str_contains($email, '@')) {
+            if (! $email || ! str_contains($email, '@')) {
                 $errorRows[] = ['row' => $i + 2, 'reason' => 'Invalid email'];
                 $errors++;
+
                 continue;
             }
 
@@ -414,6 +550,7 @@ class MarketingService
                     $skipDuplicates = $options['skip_duplicates'] ?? true;
                     if ($skipDuplicates !== false) {
                         $skipped++;
+
                         continue;
                     }
                     $this->marketingRepository->updateSubscriber($existing->id, [

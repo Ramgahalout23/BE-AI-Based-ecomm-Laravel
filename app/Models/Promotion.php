@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 class Promotion extends Model
 {
@@ -18,4 +19,16 @@ class Promotion extends Model
         'is_active' => 'boolean', 'show_on_mobile' => 'boolean', 'show_on_desktop' => 'boolean',
         'start_date' => 'datetime', 'end_date' => 'datetime'
     ];
+
+    public function products(): BelongsToMany
+    {
+        return $this->belongsToMany(Product::class, 'promotion_product')
+            ->withTimestamps();
+    }
+
+    public function categories(): BelongsToMany
+    {
+        return $this->belongsToMany(Category::class, 'promotion_category')
+            ->withTimestamps();
+    }
 }

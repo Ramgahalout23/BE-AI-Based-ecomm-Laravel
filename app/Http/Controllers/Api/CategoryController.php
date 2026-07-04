@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Api\Traits\MapsCamelCaseFields;
 use App\Services\CategoryService;
 use App\Exceptions\AppError;
 use Illuminate\Http\JsonResponse;
@@ -10,6 +11,11 @@ use Illuminate\Http\Request;
 
 class CategoryController extends Controller
 {
+    use MapsCamelCaseFields;
+
+    private array $fieldMappings = [
+        'parentId' => 'parent_id',
+    ];
     public function __construct(protected CategoryService $categoryService) {}
 
     public function index(): JsonResponse
@@ -62,10 +68,7 @@ class CategoryController extends Controller
     {
         try {
             // Support both camelCase (frontend) and snake_case (backend) param names
-            $input = $request->all();
-            if (isset($input['parentId']) && !isset($input['parent_id'])) {
-                $input['parent_id'] = $input['parentId'];
-            }
+            $input = $this->mapCamelCase($request->all(), $this->fieldMappings);
             $request->replace($input);
 
             $validated = $request->validate(['name' => 'required|string|max:255', 'parent_id' => 'nullable|exists:categories,id']);
@@ -77,10 +80,7 @@ class CategoryController extends Controller
     {
         try {
             // Support both camelCase (frontend) and snake_case (backend) param names
-            $input = $request->all();
-            if (isset($input['parentId']) && !isset($input['parent_id'])) {
-                $input['parent_id'] = $input['parentId'];
-            }
+            $input = $this->mapCamelCase($request->all(), $this->fieldMappings);
             $request->replace($input);
 
             $validated = $request->validate(['name' => 'sometimes|string|max:255']);

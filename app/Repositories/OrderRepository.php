@@ -17,19 +17,89 @@ class OrderRepository extends BaseRepository
 
     public function findWithDetails(string $id): ?Order
     {
-        return Order::with(['items.product', 'user', 'payment', 'timeline', 'shippingAddress', 'billingAddress'])->find($id);
+        return Order::select([
+                'id', 'order_number', 'user_id', 'subtotal', 'tax', 'shipping_cost', 'discount', 'total',
+                'status', 'coupon_id', 'admin_notes', 'notes',
+                'shipping_address_id', 'billing_address_id',
+                'created_at', 'updated_at',
+                'confirmed_at', 'processing_at', 'shipped_at', 'delivered_at', 'cancelled_at',
+            ])
+            ->with([
+                'items' => function ($q) {
+                    $q->select('id', 'order_id', 'product_id', 'variant_id', 'quantity', 'price', 'total', 'created_at');
+                },
+                'items.product' => function ($q) {
+                    $q->select('id', 'name', 'created_at');
+                },
+                'items.product.images' => function ($q) {
+                    $q->select('id', 'product_id', 'url');
+                },
+                'user' => function ($q) {
+                    $q->select(['id', 'first_name', 'last_name', 'email', 'phone_number', 'created_at']);
+                },
+                'payment' => function ($q) {
+                    $q->select('id', 'order_id', 'method', 'amount', 'status', 'transaction_id', 'gateway_response', 'created_at');
+                },
+                'timeline' => function ($q) {
+                    $q->select('id', 'order_id', 'status', 'description', 'created_at');
+                },
+                'shippingAddress' => function ($q) {
+                    $q->select('id', 'first_name', 'last_name', 'phone_number', 'address_line1', 'address_line2', 'city', 'state', 'zip_code', 'country', 'is_default');
+                },
+                'billingAddress' => function ($q) {
+                    $q->select('id', 'first_name', 'last_name', 'phone_number', 'address_line1', 'address_line2', 'city', 'state', 'zip_code', 'country', 'is_default');
+                },
+            ])
+            ->find($id);
     }
 
     public function findByOrderNumber(string $orderNumber): ?Order
     {
-        return Order::with(['items.product.images', 'user', 'payment', 'shippingAddress'])
+        return Order::select([
+                'id', 'order_number', 'user_id', 'subtotal', 'tax', 'shipping_cost', 'discount', 'total',
+                'status', 'coupon_id', 'admin_notes', 'notes',
+                'shipping_address_id', 'billing_address_id',
+                'created_at', 'updated_at',
+                'confirmed_at', 'processing_at', 'shipped_at', 'delivered_at', 'cancelled_at',
+            ])
+            ->with([
+                'items' => function ($q) {
+                    $q->select('id', 'order_id', 'product_id', 'variant_id', 'quantity', 'price', 'total', 'created_at');
+                },
+                'items.product' => function ($q) {
+                    $q->select('id', 'name', 'created_at');
+                },
+                'items.product.images' => function ($q) {
+                    $q->select('id', 'product_id', 'url');
+                },
+                'user' => function ($q) {
+                    $q->select(['id', 'first_name', 'last_name', 'email', 'phone_number', 'created_at']);
+                },
+                'payment' => function ($q) {
+                    $q->select('id', 'order_id', 'method', 'amount', 'status', 'transaction_id', 'gateway_response', 'created_at');
+                },
+                'shippingAddress' => function ($q) {
+                    $q->select('id', 'first_name', 'last_name', 'phone_number', 'address_line1', 'address_line2', 'city', 'state', 'zip_code', 'country', 'is_default');
+                },
+            ])
             ->where('order_number', $orderNumber)
             ->first();
     }
 
     public function getUserOrders(string $userId, array $filters = []): LengthAwarePaginator
     {
-        $query = Order::with(['items.product', 'payment'])
+        $query = Order::select('id', 'order_number', 'status', 'total', 'created_at')
+            ->with([
+                'items' => function ($q) {
+                    $q->select('id', 'order_id', 'product_id', 'quantity', 'price', 'total');
+                },
+                'items.product' => function ($q) {
+                    $q->select('id', 'name');
+                },
+                'items.product.images' => function ($q) {
+                    $q->select('id', 'product_id', 'url');
+                },
+            ])
             ->where('user_id', $userId);
 
         if (!empty($filters['status'])) {
@@ -42,7 +112,21 @@ class OrderRepository extends BaseRepository
 
     public function findMany(array $filters = []): LengthAwarePaginator
     {
-        $query = Order::with('user');
+        $query = Order::select('id', 'order_number', 'user_id', 'total', 'status', 'created_at', 'updated_at')
+            ->with([
+                'user' => function ($q) {
+                    $q->select(['id', 'first_name', 'last_name', 'email']);
+                },
+                'items' => function ($q) {
+                    $q->select('id', 'order_id', 'product_id', 'quantity', 'price', 'total');
+                },
+                'items.product' => function ($q) {
+                    $q->select('id', 'name');
+                },
+                'items.product.images' => function ($q) {
+                    $q->select('id', 'product_id', 'url');
+                },
+            ]);
 
         if (!empty($filters['status'])) {
             $query->where('status', $filters['status']);

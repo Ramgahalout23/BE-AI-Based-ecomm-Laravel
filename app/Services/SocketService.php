@@ -172,6 +172,19 @@ class SocketService
     }
 
     /**
+     * Emit a log entry event (real-time log streaming).
+     * Always broadcasts to the admin channel.
+     */
+    public function emitLogEvent(string $event, array $data): void
+    {
+        $this->dispatchToNode($event, $data, null, true);
+
+        $level = $data['level'] ?? 'UNKNOWN';
+        $file = $data['file'] ?? 'laravel.log';
+        Log::debug("[Socket] Log event {$event} emitted: {$level} — {$file}");
+    }
+
+    /**
      * Resolve event class from event name.
      */
     private function resolveEventClass(string $eventName): ?string
