@@ -8,6 +8,7 @@ use App\Exceptions\AppError;
 use App\Models\WishlistItem;
 use App\Models\SharedWishlist;
 use App\Models\Product;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 
 class WishlistService
@@ -17,6 +18,30 @@ class WishlistService
     ) {}
 
     /**
+     * Clear all cached wishlist data for a user.
+     * Uses version-based invalidation (same pattern as ProductService)
+     * so all paginated list caches are invalidated atomically.
+     */
+    private function clearUserCache(string $userId): void
+    {
+        // Increment version to invalidate all list caches for this user
+        $version = Cache::get("wishlist_cache_version:{$userId}", 0);
+        Cache::forever("wishlist_cache_version:{$userId}", $version + 1);
+
+        // Also forget count cache immediately (it's a simple key, not versioned)
+        Cache::forget("wishlist:{$userId}:count");
+    }
+
+    /**
+     * Get versioned cache key for wishlist paginated list.
+     */
+    private function versionedWishlistKey(string $userId, int $page, int $limit): string
+    {
+        $version = Cache::get("wishlist_cache_version:{$userId}", 0);
+        return "wishlist:v{$version}:{$userId}:{$page}:{$limit}";
+    }
+
+    /**
      * Get user's wishlist with pagination.
      */
     public function getUserWishlist(string $userId, int $page = 1, int $limit = 20): array
@@ -24,12 +49,17 @@ class WishlistService
         if ($page < 1) throw AppError::validation('Page number must be at least 1');
         if ($limit < 1 || $limit > 100) throw AppError::validation('Limit must be between 1 and 100');
 
-        return $this->wishlistRepository->getUserWishlist($userId, $page, $limit);
+        $cacheKey = $this->versionedWishlistKey($userId, $page, $limit);
+        return Cache::remember($cacheKey, 300, function () use ($userId, $page, $limit) {
+            return $this->wishlistRepository->getUserWishlist($userId, $page, $limit);
+        });
     }
 
     public function toggle(string $userId, string $productId): array
     {
-        return $this->wishlistRepository->toggleItem($userId, $productId);
+        $result = $this->wishlistRepository->toggleItem($userId, $productId);
+        $this->clearUserCache($userId);
+        return $result;
     }
 
     /**
@@ -47,7 +77,9 @@ class WishlistService
         $existing = $this->wishlistRepository->findByUserAndProduct($userId, $productId);
         if ($existing) throw AppError::conflict('Product already in wishlist');
 
-        return $this->wishlistRepository->addItem($userId, $productId);
+        $result = $this->wishlistRepository->addItem($userId, $productId);
+        $this->clearUserCache($userId);
+        return $result;
     }
 
     public function remove(string $userId, string $productId): void
@@ -55,23 +87,29 @@ class WishlistService
         $item = $this->wishlistRepository->findByUserAndProduct($userId, $productId);
         if (!$item) throw AppError::notFound('Product not in wishlist');
         $this->wishlistRepository->removeByUserAndProduct($userId, $productId);
+        $this->clearUserCache($userId);
     }
 
     public function check(string $userId, string $productId): array
     {
         if (empty($productId)) throw AppError::validation('Product ID is required');
-        return ['wishlisted' => $this->wishlistRepository->checkProduct($userId, $productId)];
+        return Cache::remember("wishlist:{$userId}:check:{$productId}", 300, function () use ($userId, $productId) {
+            return ['wishlisted' => $this->wishlistRepository->checkProduct($userId, $productId)];
+        });
     }
 
     public function getCount(string $userId): array
     {
-        return ['count' => $this->wishlistRepository->getCount($userId)];
+        return Cache::remember("wishlist:{$userId}:count", 300, function () use ($userId) {
+            return ['count' => $this->wishlistRepository->getCount($userId)];
+        });
     }
 
     public function clearAll(string $userId): array
     {
         $count = $this->wishlistRepository->getCount($userId);
         $this->wishlistRepository->clearWishlist($userId);
+        $this->clearUserCache($userId);
         return ['message' => 'Wishlist cleared', 'count' => $count];
     }
 

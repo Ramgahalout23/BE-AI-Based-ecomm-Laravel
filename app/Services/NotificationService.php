@@ -83,9 +83,9 @@ class NotificationService
         $this->notificationRepository->delete($notificationId);
     }
 
-    public function getUnreadNotifications(string $userId): array
+    public function getUnreadCount(string $userId): int
     {
-        return $this->notificationRepository->getUnreadNotifications($userId)->toArray();
+        return $this->notificationRepository->getUnreadCount($userId);
     }
 
     public function deleteNotification(string $userId, string $notificationId): void

@@ -49,8 +49,16 @@ use App\Http\Controllers\Api\TranslationController;
 use App\Http\Controllers\Api\RecentlyViewedController;
 use App\Http\Controllers\Api\WebhookController;
 use App\Http\Controllers\Api\DocsController;
+use App\Http\Controllers\Api\HomepageController;
+use App\Http\Controllers\Api\AppInitController;
 
 Route::prefix('v1')->group(function () {
+    // Consolidated app initialization — replaces 8+ individual API calls
+    Route::get('/app-init', AppInitController::class);
+
+    // ── Consolidated Homepage Endpoint (replaces 15+ separate API calls) ──
+    Route::get('/homepage', HomepageController::class);
+
 
     // ── OpenAPI Documentation Routes ──
     Route::get('/docs/json', [DocsController::class, 'json']);
@@ -290,6 +298,9 @@ Route::prefix('v1')->group(function () {
         // ── Review Image Uploads (user-facing) ──
         Route::post('/uploads/review-image', [ReviewController::class, 'uploadReviewImage']);
         Route::post('/uploads/review-images', [ReviewController::class, 'uploadReviewImages']);
+
+        // ── Avatar Upload (user-facing) ──
+        Route::post('/uploads/avatar', [UserProfileController::class, 'uploadAvatar']);
 
         Route::get('/addresses', [AddressController::class, 'index']);
         Route::post('/addresses', [AddressController::class, 'store']);

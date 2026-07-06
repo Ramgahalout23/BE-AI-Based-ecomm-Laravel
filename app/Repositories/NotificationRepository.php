@@ -3,7 +3,6 @@
 namespace App\Repositories;
 
 use App\Models\UserNotification;
-use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Cache;
 
 class NotificationRepository extends BaseRepository
@@ -64,7 +63,7 @@ class NotificationRepository extends BaseRepository
 
     public function getUnreadCount(string $userId): int
     {
-        return Cache::remember($this->userCacheKey($userId, 'unread_count'), 30, function () use ($userId) {
+        return Cache::remember($this->userCacheKey($userId, 'unread_count'), 120, function () use ($userId) {
             return UserNotification::where('user_id', $userId)
                 ->where('is_read', false)
                 ->count();
@@ -132,16 +131,6 @@ class NotificationRepository extends BaseRepository
             'total' => $paginator->total(),
             'total_pages' => $paginator->lastPage(),
         ];
-    }
-
-    public function getUnreadNotifications(string $userId): Collection
-    {
-        return Cache::remember($this->userCacheKey($userId, 'unread_list'), 30, function () use ($userId) {
-            return UserNotification::where('user_id', $userId)
-                ->where('is_read', false)
-                ->latest()
-                ->get();
-        });
     }
 
     public function createSystemNotification(string $type, string $title, string $message, array $data = []): UserNotification

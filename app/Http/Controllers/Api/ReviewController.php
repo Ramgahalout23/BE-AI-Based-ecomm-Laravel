@@ -8,6 +8,7 @@ use App\Exceptions\AppError;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 
 class ReviewController extends Controller
 {
@@ -46,6 +47,7 @@ class ReviewController extends Controller
                 'images.*' => 'nullable|string',
             ]);
             $review = $this->reviewService->create(Auth::id(), $validated);
+            Cache::forget('reviews_homepage_data');
             return response()->json(['success' => true, 'message' => 'Review submitted', 'data' => $review], 201);
         } catch (AppError $e) { return $e->render(); }
     }
@@ -60,6 +62,7 @@ class ReviewController extends Controller
         try {
             $validated = $request->validate(['rating' => 'sometimes|integer|min:1|max:5', 'comment' => 'nullable|string']);
             $review = $this->reviewService->update($id, Auth::id(), $validated);
+            Cache::forget('reviews_homepage_data');
             return response()->json(['success' => true, 'message' => 'Review updated', 'data' => $review]);
         } catch (AppError $e) { return $e->render(); }
     }
@@ -68,6 +71,7 @@ class ReviewController extends Controller
     {
         try {
             $this->reviewService->delete($id, Auth::id());
+            Cache::forget('reviews_homepage_data');
             return response()->json(['success' => true, 'message' => 'Review deleted']);
         } catch (AppError $e) { return $e->render(); }
     }
@@ -77,6 +81,7 @@ class ReviewController extends Controller
         try {
             $validated = $request->validate(['status' => 'required|string|in:APPROVED,REJECTED,PENDING']);
             $review = $this->reviewService->moderate($id, $validated['status']);
+            Cache::forget('reviews_homepage_data');
             return response()->json(['success' => true, 'message' => 'Review moderated', 'data' => $review]);
         } catch (AppError $e) { return $e->render(); }
     }
@@ -145,41 +150,51 @@ class ReviewController extends Controller
      */
     public function homepage(Request $request): JsonResponse
     {
-        // Check master toggle — if reviews are disabled, return empty
-        $reviewsEnabled = \App\Models\Setting::where('key', 'reviewsEnabled')->value('value');
+        // Check master toggle — if reviews are disabled, return empty (cached 5 min)
+        $reviewsEnabled = Cache::remember('setting_reviewsEnabled', 300, function () {
+            return \App\Models\Setting::where('key', 'reviewsEnabled')->value('value');
+        });
+
         if ($reviewsEnabled === 'false' || $reviewsEnabled === '0') {
             return response()->json([
                 'success' => true,
                 'data' => ['reviews' => [], 'pagination' => ['page' => 1, 'limit' => 0, 'total' => 0, 'pages' => 0], 'stats' => ['average_rating' => 0, 'total_reviews' => 0]],
-            ]);
+            ])->setCache(['public' => true, 'max_age' => 300]);
         }
 
-        $page = $request->integer('page', 1);
-        $limit = $request->integer('limit', 20);
+        // Cache the homepage reviews (page 1, limit 20 only — homepage never paginates beyond first page)
+        $data = Cache::remember('reviews_homepage_data', 300, function () {
+            $reviews = \App\Models\Review::with(['user' => fn($q) => $q->select('id', 'first_name', 'last_name', 'email', 'avatar')])
+                ->with('product:id,name')
+                ->where('is_moderated', true)
+                ->where('is_flagged', false)
+                ->latest()
+                ->take(20)
+                ->get();
 
-        $reviews = \App\Models\Review::with(['user' => fn($q) => $q->select('id', 'first_name', 'last_name', 'email', 'avatar')])
-            ->with('product:id,name')
-            ->where('is_moderated', true)
-            ->where('is_flagged', false)
-            ->latest()
-            ->paginate($limit, ['*'], 'page', $page);
+            $statsQuery = \App\Models\Review::where('is_moderated', true)->where('is_flagged', false);
+            $totalReviews = (clone $statsQuery)->count();
+            $averageRating = round((clone $statsQuery)->avg('rating') ?? 0, 1);
+
+            return [
+                'reviews' => $reviews->toArray(),
+                'pagination' => [
+                    'page' => 1,
+                    'limit' => 20,
+                    'total' => $totalReviews,
+                    'pages' => (int) ceil($totalReviews / 20),
+                ],
+                'stats' => [
+                    'average_rating' => $averageRating,
+                    'total_reviews' => $totalReviews,
+                ],
+            ];
+        });
 
         return response()->json([
             'success' => true,
-            'data' => [
-                'reviews' => $reviews->items(),
-                'pagination' => [
-                    'page' => $reviews->currentPage(),
-                    'limit' => $reviews->perPage(),
-                    'total' => $reviews->total(),
-                    'pages' => $reviews->lastPage(),
-                ],
-                'stats' => [
-                    'average_rating' => round(\App\Models\Review::where('is_moderated', true)->where('is_flagged', false)->avg('rating') ?? 0, 1),
-                    'total_reviews' => \App\Models\Review::where('is_moderated', true)->where('is_flagged', false)->count(),
-                ],
-            ],
-        ]);
+            'data' => $data,
+        ])->setCache(['public' => true, 'max_age' => 300]);
     }
 
     /**
@@ -204,6 +219,7 @@ class ReviewController extends Controller
     {
         try {
             $review = $this->reviewService->moderate($id, 'APPROVED');
+            Cache::forget('reviews_homepage_data');
             return response()->json(['success' => true, 'message' => 'Review approved', 'data' => $review]);
         } catch (AppError $e) { return $e->render(); }
     }
@@ -216,6 +232,7 @@ class ReviewController extends Controller
     {
         try {
             $review = $this->reviewService->moderate($id, 'REJECTED');
+            Cache::forget('reviews_homepage_data');
             return response()->json(['success' => true, 'message' => 'Review rejected', 'data' => $review]);
         } catch (AppError $e) { return $e->render(); }
     }

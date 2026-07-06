@@ -3,6 +3,7 @@
 namespace App\Repositories;
 
 use App\Models\Promotion;
+use Illuminate\Support\Facades\Cache;
 
 class PromotionRepository extends BaseRepository
 {
@@ -11,15 +12,44 @@ class PromotionRepository extends BaseRepository
         return Promotion::class;
     }
 
+    /**
+     * Get active promotions (no end_date OR end_date in the future).
+     * Cached for 5 minutes — promotions change infrequently.
+     *
+     * Uses two separate index-friendly queries + merge instead of a single query
+     * with an OR condition on end_date. MySQL's B-tree index can't efficiently
+     * scan an OR of (IS NULL) and (>= range), so splitting lets each subquery
+     * use a clean range scan on the (is_active, end_date, priority) index.
+     *
+     * Each subquery can also satisfy ORDER BY priority directly from the index
+     * without a filesort.
+     */
     public function getActive(): \Illuminate\Database\Eloquent\Collection
     {
-        return Promotion::with(['products:id,name,slug,price', 'categories:id,name,slug'])
-            ->where('is_active', true)
-            ->where(function ($q) {
-                $q->whereNull('end_date')->orWhere('end_date', '>=', now());
-            })
-            ->orderBy('priority', 'desc')
-            ->get();
+        return Cache::remember('promotions_active', 300, function () {
+            $with = ['products:id,name,slug,price', 'categories:id,name,slug'];
+
+            // 1) Promotions with no end date (permanent/evergreen)
+            $noEndDate = Promotion::select('id', 'title', 'description', 'image_url', 'discount', 'type', 'status', 'start_date', 'end_date', 'priority', 'is_active', 'coupon_code')
+                ->with($with)
+                ->where('is_active', true)
+                ->whereNull('end_date')
+                ->orderBy('priority', 'desc')
+                ->get();
+
+            // 2) Promotions with a future end date
+            $activeDateRange = Promotion::select('id', 'title', 'description', 'image_url', 'discount', 'type', 'status', 'start_date', 'end_date', 'priority', 'is_active', 'coupon_code')
+                ->with($with)
+                ->where('is_active', true)
+                ->where('end_date', '>=', now())
+                ->orderBy('priority', 'desc')
+                ->get();
+
+            // Merge and re-sort globally by priority to match the original single-query ordering.
+            return $noEndDate->merge($activeDateRange)
+                ->sortByDesc('priority')
+                ->values();
+        });
     }
 
     /**
@@ -119,7 +149,16 @@ class PromotionRepository extends BaseRepository
     {
         $promotion = $this->findByIdOrFail($id);
         $promotion->update(['status' => $status]);
+        $this->clearActiveCache();
         return $promotion->fresh();
+    }
+
+    /**
+     * Clear cached active promotions.
+     */
+    private function clearActiveCache(): void
+    {
+        Cache::forget('promotions_active');
     }
 
     /**
@@ -135,6 +174,8 @@ class PromotionRepository extends BaseRepository
         if (!empty($categoryIds)) {
             $promotion->categories()->sync($categoryIds);
         }
+
+        $this->clearActiveCache();
 
         return $promotion->fresh()->load(['products:id,name,slug,price', 'categories:id,name,slug']);
     }
@@ -156,6 +197,8 @@ class PromotionRepository extends BaseRepository
             $promotion->categories()->sync($categoryIds);
         }
 
+        $this->clearActiveCache();
+
         return $promotion->fresh()->load(['products:id,name,slug,price', 'categories:id,name,slug']);
     }
 
@@ -165,5 +208,15 @@ class PromotionRepository extends BaseRepository
     public function findByIdWithRelations(string $id): ?Promotion
     {
         return Promotion::with(['products:id,name,slug,price', 'categories:id,name,slug'])->find($id);
+    }
+
+    /**
+     * Override delete to clear cache.
+     */
+    public function delete(string $id): bool
+    {
+        $result = parent::delete($id);
+        $this->clearActiveCache();
+        return $result;
     }
 }

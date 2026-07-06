@@ -10,6 +10,7 @@ use App\Services\ProductImportService;
 use App\Services\ProductService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
 
 class ProductController extends Controller
@@ -45,8 +46,10 @@ class ProductController extends Controller
 
     public function bestSellers(Request $request): JsonResponse
     {
-        // Check master toggle — if best sellers are disabled, return empty
-        $bestSellersEnabled = \App\Models\Setting::where('key', 'bestSellersEnabled')->value('value');
+        // Check master toggle — cached for 5 minutes
+        $bestSellersEnabled = Cache::remember('setting_bestSellersEnabled', 300, function () {
+            return \App\Models\Setting::where('key', 'bestSellersEnabled')->value('value');
+        });
         if ($bestSellersEnabled === 'false' || $bestSellersEnabled === '0') {
             return response()->json(['success' => true, 'data' => []]);
         }

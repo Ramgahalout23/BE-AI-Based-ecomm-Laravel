@@ -28,7 +28,10 @@ class TranslationService
     public function getLanguages(): array
     {
         return Cache::remember('languages_active', 3600, function () {
-            return Language::where('is_active', true)->get()->toArray();
+            return Language::where('is_active', true)
+                ->select('code', 'name', 'native_name', 'is_default')
+                ->get()
+                ->toArray();
         });
     }
 
@@ -103,6 +106,7 @@ class TranslationService
 
         Cache::forget('languages_active');
         Cache::forget('language_default');
+        Cache::forget('languages_admin');
 
         return $lang;
     }
@@ -114,10 +118,16 @@ class TranslationService
         $lang->delete();
         Cache::forget('languages_active');
         Cache::forget('language_default');
+        Cache::forget('languages_admin');
     }
 
     public function getAllLanguagesAdmin(): array
     {
-        return Language::latest()->get()->toArray();
+        return Cache::remember('languages_admin', 3600, function () {
+            return Language::latest()
+                ->select('id', 'code', 'name', 'native_name', 'is_default', 'is_active')
+                ->get()
+                ->toArray();
+        });
     }
 }

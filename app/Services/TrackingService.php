@@ -2,6 +2,9 @@
 
 namespace App\Services;
 
+use App\Jobs\RecordEventJob;
+use App\Jobs\RecordPageViewJob;
+use App\Jobs\RecordSessionJob;
 use App\Repositories\TrackingRepository;
 use App\Models\UserEvent;
 
@@ -11,16 +14,40 @@ class TrackingService
         protected TrackingRepository $trackingRepository
     ) {}
 
+    /**
+     * Record a page view asynchronously after the response is sent.
+     * Returns immediately — the actual DB insert happens in a queued job.
+     */
     public function recordPageView(string $url, ?string $userId, ?string $sessionId, ?string $referrer, ?string $title = null, ?string $userAgent = null, ?string $device = null): array
     {
-        $view = $this->trackingRepository->recordPageView($url, $userId, $sessionId, $referrer, $title, $userAgent, $device);
-        return $view->toArray();
+        RecordPageViewJob::dispatchAfterResponse(
+            $url,
+            $userId,
+            $sessionId,
+            $referrer,
+            $title,
+            $userAgent,
+            $device
+        );
+
+        return ['recorded' => true];
     }
 
     public function createSession(?string $sessionId, ?string $userId, string $ip, string $userAgent, ?string $device = null, ?string $browser = null, ?string $os = null, ?string $referrer = null, ?string $landingPage = null): array
     {
-        $session = $this->trackingRepository->createSession($sessionId, $userId, $ip, $userAgent, $device, $browser, $os, $referrer, $landingPage);
-        return $session->toArray();
+        RecordSessionJob::dispatchAfterResponse(
+            $sessionId,
+            $userId,
+            $ip,
+            $userAgent,
+            $device,
+            $browser,
+            $os,
+            $referrer,
+            $landingPage
+        );
+
+        return ['recorded' => true, 'session_id' => $sessionId];
     }
 
     public function endSession(string $sessionId): void
@@ -30,8 +57,19 @@ class TrackingService
 
     public function recordEvent(string $sessionId, string $eventType, ?string $eventName = null, ?string $category = null, ?string $label = null, ?string $value = null, ?string $url = null, ?string $metadata = null, ?string $userId = null): array
     {
-        $event = $this->trackingRepository->recordEvent($sessionId, $eventType, $eventName, $category, $label, $value, $url, $metadata, $userId);
-        return $event->toArray();
+        RecordEventJob::dispatchAfterResponse(
+            $sessionId,
+            $eventType,
+            $eventName,
+            $category,
+            $label,
+            $value,
+            $url,
+            $metadata,
+            $userId
+        );
+
+        return ['recorded' => true];
     }
 
     public function getPageViewStats(): array

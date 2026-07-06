@@ -8,6 +8,7 @@ use App\Models\Shipping;
 use App\Models\ShippingZone;
 use App\Models\ShippingRate;
 use App\Models\Order;
+use Illuminate\Support\Facades\Cache;
 
 class ShippingService
 {
@@ -26,17 +27,19 @@ class ShippingService
 
     public function getZones(): array
     {
-        $zones = $this->shippingRepository->getAllZones()->toArray();
-        // Map snake_case fields and add 'regions' from 'countries' for frontend compat
-        return array_map(function ($zone) {
-            $zone['countries'] = $zone['countries'] ?? [];
-            $zone['states']    = $zone['states'] ?? [];
-            // Frontend reads z.regions but model has countries column
-            $zone['regions']   = $zone['countries'];
-            $zone['createdAt'] = $zone['created_at'] ?? null;
-            $zone['updatedAt'] = $zone['updated_at'] ?? null;
-            return $zone;
-        }, $zones);
+        return Cache::remember('shipping_zones', 3600, function () {
+            $zones = $this->shippingRepository->getAllZones()->toArray();
+            // Map snake_case fields and add 'regions' from 'countries' for frontend compat
+            return array_map(function ($zone) {
+                $zone['countries'] = $zone['countries'] ?? [];
+                $zone['states']    = $zone['states'] ?? [];
+                // Frontend reads z.regions but model has countries column
+                $zone['regions']   = $zone['countries'];
+                $zone['createdAt'] = $zone['created_at'] ?? null;
+                $zone['updatedAt'] = $zone['updated_at'] ?? null;
+                return $zone;
+            }, $zones);
+        });
     }
 
     public function getShippingMethods(): array
@@ -74,19 +77,23 @@ class ShippingService
 
     public function createZone(array $data): array
     {
-        return ShippingZone::create($data)->toArray();
+        $result = ShippingZone::create($data)->toArray();
+        Cache::forget('shipping_zones');
+        return $result;
     }
 
     public function updateZone(string $id, array $data): array
     {
         $zone = ShippingZone::findOrFail($id);
         $zone->update($data);
+        Cache::forget('shipping_zones');
         return $zone->fresh()->toArray();
     }
 
     public function deleteZone(string $id): void
     {
         ShippingZone::findOrFail($id)->delete();
+        Cache::forget('shipping_zones');
     }
 
     public function getAllZonesPaginated(int $page = 1, int $limit = 20): array

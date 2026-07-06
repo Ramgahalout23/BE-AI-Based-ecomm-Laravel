@@ -7,6 +7,7 @@ use App\Exceptions\AppError;
 use App\Models\Seo;
 use App\Models\Product;
 use App\Models\Category;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 class SeoService
@@ -80,14 +81,16 @@ class SeoService
 
     public function getGlobalSEO(): array
     {
-        $keys = ['seo_title', 'seo_description', 'seo_keywords'];
-        $settings = \App\Models\Setting::whereIn('key', $keys)->pluck('value', 'key')->toArray();
+        return Cache::remember('seo_global', 3600, function () {
+            $keys = ['seo_title', 'seo_description', 'seo_keywords'];
+            $settings = \App\Models\Setting::whereIn('key', $keys)->pluck('value', 'key')->toArray();
 
-        return [
-            'title' => $settings['seo_title'] ?? '',
-            'description' => $settings['seo_description'] ?? '',
-            'keywords' => $settings['seo_keywords'] ?? '',
-        ];
+            return [
+                'title' => $settings['seo_title'] ?? '',
+                'description' => $settings['seo_description'] ?? '',
+                'keywords' => $settings['seo_keywords'] ?? '',
+            ];
+        });
     }
 
     public function updateGlobalSEO(array $data): array
@@ -104,6 +107,8 @@ class SeoService
             );
         }
 
+        Cache::forget('seo_global');
+
         return $this->getGlobalSEO();
     }
 
@@ -111,23 +116,26 @@ class SeoService
 
     public function getSitemap(): array
     {
-        // Use chunked iteration to avoid memory issues with large datasets
-        $entries = [];
-        Seo::select('entity_type', 'entity_id', 'updated_at')
-            ->chunk(500, function ($chunk) use (&$entries) {
-                foreach ($chunk as $seo) {
-                    $entries[] = $seo->toArray();
-                }
-            });
+        return Cache::remember('seo_sitemap', 300, function () {
+            // Use chunked iteration to avoid memory issues with large datasets
+            $entries = [];
+            Seo::select('entity_type', 'entity_id', 'updated_at')
+                ->chunk(500, function ($chunk) use (&$entries) {
+                    foreach ($chunk as $seo) {
+                        $entries[] = $seo->toArray();
+                    }
+                });
 
-        return [
-            'count' => count($entries),
-            'entries' => $entries,
-        ];
+            return [
+                'count' => count($entries),
+                'entries' => $entries,
+            ];
+        });
     }
 
     public function refreshSitemap(): array
     {
+        Cache::forget('seo_sitemap');
         return $this->getSitemap();
     }
 
@@ -209,6 +217,9 @@ class SeoService
             \App\Models\Sitemap::insert($entries);
         }
 
+        // Invalidate sitemap caches after regeneration
+        Cache::forget('sitemap_db');
+
         Log::info('Sitemap regenerated — ' . count($sitemapData) . ' entries');
     }
 
@@ -217,19 +228,23 @@ class SeoService
      */
     public function getSitemapFromDB(): array
     {
-        $entries = \App\Models\Sitemap::orderBy('url')->get();
-        $lastGenerated = $entries->isNotEmpty() ? $entries->max('created_at') : null;
+        return Cache::remember('sitemap_db', 300, function () {
+            $entries = \App\Models\Sitemap::orderBy('url')->get();
+            $lastGenerated = $entries->isNotEmpty() ? $entries->max('created_at') : null;
 
-        return [
-            'entries' => $entries->toArray(),
-            'count' => $entries->count(),
-            'last_generated' => $lastGenerated,
-        ];
+            return [
+                'entries' => $entries->toArray(),
+                'count' => $entries->count(),
+                'last_generated' => $lastGenerated,
+            ];
+        });
     }
 
     public function generateSitemapXML(string $baseUrl): string
     {
-        $entries = \App\Models\Sitemap::orderBy('url')->get();
+        // Use cached sitemap DB entries
+        $sitemap = $this->getSitemapFromDB();
+        $entries = collect($sitemap['entries'])->map(fn($e) => (object) $e);
 
         if ($entries->isEmpty()) {
             $fresh = $this->generateSitemap();
@@ -263,11 +278,13 @@ class SeoService
 
     public function getRobotsTxt(): array
     {
-        $robots = \App\Models\Setting::where('key', 'robots_txt')->first();
-        return [
-            'content' => $robots?->value ?? "User-agent: *\nAllow: /\n",
-            'updated_at' => $robots?->updated_at,
-        ];
+        return Cache::remember('robots_txt', 3600, function () {
+            $robots = \App\Models\Setting::where('key', 'robots_txt')->first();
+            return [
+                'content' => $robots?->value ?? "User-agent: *\nAllow: /\n",
+                'updated_at' => $robots?->updated_at,
+            ];
+        });
     }
 
     public function updateRobotsTxt(string $content): array
@@ -276,6 +293,7 @@ class SeoService
             ['key' => 'robots_txt', 'module' => 'SITE'],
             ['value' => $content]
         );
+        Cache::forget('robots_txt');
         return $this->getRobotsTxt();
     }
 

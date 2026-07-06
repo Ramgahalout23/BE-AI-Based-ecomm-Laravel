@@ -90,7 +90,15 @@ class CartRepository extends BaseRepository
 
     public function findItemById(string $itemId): ?CartItem
     {
-        return CartItem::find($itemId);
+        return CartItem::with('product.images', 'variant')->find($itemId);
+    }
+
+    public function findByUserAndProduct(string $userId, string $productId): ?CartItem
+    {
+        return CartItem::with('product', 'variant')
+            ->where('user_id', $userId)
+            ->where('product_id', $productId)
+            ->first();
     }
 
     public function updateItemQuantity(string $itemId, int $quantity): CartItem

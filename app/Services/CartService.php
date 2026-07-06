@@ -71,8 +71,9 @@ class CartService
         if (!$product) throw AppError::notFound('Product not found');
 
         // Check variant-level stock if product has variants (matching TS variant-first approach)
-        if (ProductVariant::where('product_id', $productId)->exists()) {
-            $totalVariantStock = (int) ProductVariant::where('product_id', $productId)->sum('quantity');
+        // Single query: sum() returns 0 if no rows exist, no need for separate exists() check
+        $totalVariantStock = (int) ProductVariant::where('product_id', $productId)->sum('quantity');
+        if ($totalVariantStock > 0) {
             if ($totalVariantStock < $quantity) {
                 throw AppError::validation('Not enough stock available across variants');
             }
@@ -102,11 +103,14 @@ class CartService
         if (!$item) throw AppError::notFound('Cart item not found');
 
         // Check stock availability before updating quantity
+        // Eager load variant if variant_id is set to avoid a separate query
+        if ($item->variant_id && !$item->relationLoaded('variant')) {
+            $item->load('variant');
+        }
         $product = $item->product;
         if ($product) {
             if ($item->variant_id) {
-                // Variant-level stock check
-                $variant = ProductVariant::find($item->variant_id);
+                $variant = $item->variant ?? ProductVariant::find($item->variant_id);
                 if ($variant && $variant->quantity < $quantity) {
                     throw AppError::validation(
                         "Only {$variant->quantity} units available for this variant"
@@ -132,15 +136,15 @@ class CartService
     {
         if ($quantity <= 0) throw AppError::validation('Quantity must be greater than 0');
 
-        $item = CartItem::where('user_id', $userId)->where('product_id', $productId)->first();
+        $item = $this->cartRepository->findByUserAndProduct($userId, $productId);
         if (!$item) throw AppError::notFound('Cart item not found');
 
-        // Check stock availability before updating quantity
-        $product = Product::find($productId);
+        // Check stock availability before updating quantity — preload variant + product together
+        $item->loadMissing(['variant', 'product']);
+        $product = $item->product;
         if ($product) {
             if ($item->variant_id) {
-                // Variant-level stock check
-                $variant = ProductVariant::find($item->variant_id);
+                $variant = $item->variant;
                 if ($variant && $variant->quantity < $quantity) {
                     throw AppError::validation(
                         "Only {$variant->quantity} units available for this variant"
@@ -153,7 +157,7 @@ class CartService
             }
         }
 
-        $item->update(['quantity' => $quantity]);
+        $this->cartRepository->updateItemQuantity($item->id, $quantity);
         $updated = $item->fresh();
 
         return [

@@ -7,6 +7,7 @@ use App\Exceptions\AppError;
 use App\Models\Coupon;
 use App\Models\CouponUsage;
 use App\Models\CouponAnalytics;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 
 class CouponService
@@ -30,7 +31,10 @@ class CouponService
             }
         }
 
-        return $this->couponRepository->create($data)->toArray();
+        $result = $this->couponRepository->create($data)->toArray();
+        Cache::forget('coupons_public');
+        Cache::forget('coupons_auto_apply');
+        return $result;
     }
 
     public function getAll(array $filters = [], int $page = 1, int $limit = 10): array
@@ -89,22 +93,24 @@ class CouponService
      */
     public function getPublicCoupons(): array
     {
-        $now = now();
-        $coupons = Coupon::where('is_active', true)
-            ->where(function ($q) {
-                $q->whereNull('start_date')->orWhere('start_date', '<=', now());
-            })
-            ->where(function ($q) {
-                $q->whereNull('expiry_date')->orWhere('expiry_date', '>', now());
-            })
-            ->where('is_auto_apply', false)
-            ->where('discount_value', '>', 0)
-            ->get();
+        return Cache::remember('coupons_public', 3600, function () {
+            $nonMonetaryTypes = Coupon::NON_MONETARY_TYPES;
 
-        // Filter out non-monetary types using model constant
-        $nonMonetaryTypes = \App\Models\Coupon::NON_MONETARY_TYPES;
-
-        return array_values(array_filter($coupons->toArray(), fn($c) => !in_array($c['type'] ?? '', $nonMonetaryTypes)));
+            return Coupon::select('id', 'code', 'type', 'discount_type', 'discount_value', 'min_order_value', 'max_discount', 'description', 'is_auto_apply', 'start_date', 'expiry_date', 'usage_count', 'usage_limit', 'usage_per_user', 'is_new_user_only', 'is_stackable')
+                ->where('is_active', true)
+                ->where(function ($q) {
+                    $q->whereNull('start_date')->orWhere('start_date', '<=', now());
+                })
+                ->where(function ($q) {
+                    $q->whereNull('expiry_date')->orWhere('expiry_date', '>', now());
+                })
+                ->where('is_auto_apply', false)
+                ->where('discount_value', '>', 0)
+                ->get()
+                ->filter(fn($c) => !in_array($c->type ?? '', $nonMonetaryTypes))
+                ->values()
+                ->toArray();
+        });
     }
 
     public function validateCoupon(string $code): array
@@ -124,13 +130,18 @@ class CouponService
             }
         }
 
-        return $this->couponRepository->update($id, $data)->toArray();
+        $result = $this->couponRepository->update($id, $data)->toArray();
+        Cache::forget('coupons_public');
+        Cache::forget('coupons_auto_apply');
+        return $result;
     }
 
     public function delete(string $id): void
     {
         $this->couponRepository->findByIdOrFail($id);
         $this->couponRepository->delete($id);
+        Cache::forget('coupons_public');
+        Cache::forget('coupons_auto_apply');
     }
 
     /**
@@ -302,16 +313,19 @@ class CouponService
      */
     public function getAutoApplyCoupons(): array
     {
-        return Coupon::where('is_active', true)
-            ->where('is_auto_apply', true)
-            ->where(function ($q) {
-                $q->whereNull('start_date')->orWhere('start_date', '<=', now());
-            })
-            ->where(function ($q) {
-                $q->whereNull('expiry_date')->orWhere('expiry_date', '>', now());
-            })
-            ->get()
-            ->toArray();
+        return Cache::remember('coupons_auto_apply', 3600, function () {
+            return Coupon::select('id', 'code', 'type', 'discount_type', 'discount_value', 'min_order_value', 'max_discount', 'description', 'start_date', 'expiry_date', 'usage_count', 'usage_limit', 'usage_per_user', 'is_new_user_only', 'is_stackable')
+                ->where('is_active', true)
+                ->where('is_auto_apply', true)
+                ->where(function ($q) {
+                    $q->whereNull('start_date')->orWhere('start_date', '<=', now());
+                })
+                ->where(function ($q) {
+                    $q->whereNull('expiry_date')->orWhere('expiry_date', '>', now());
+                })
+                ->get()
+                ->toArray();
+        });
     }
 
     /**

@@ -17,7 +17,11 @@ class WishlistRepository extends BaseRepository
      */
     public function getUserWishlist(string $userId, int $page = 1, int $limit = 20): array
     {
-        $query = WishlistItem::with('product.images')
+        $query = WishlistItem::with(['product' => function ($q) {
+            $q->select('id', 'name', 'slug', 'price', 'old_price', 'status', 'quantity', 'is_featured', 'category_id');
+        }, 'product.images' => function ($q) {
+            $q->select('id', 'product_id', 'url', 'alt');
+        }])->select('id', 'user_id', 'product_id', 'created_at')
             ->where('user_id', $userId);
 
         $total = $query->count();

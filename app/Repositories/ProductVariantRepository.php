@@ -13,7 +13,9 @@ class ProductVariantRepository extends BaseRepository
 
     public function findByProduct(string $productId): \Illuminate\Database\Eloquent\Collection
     {
-        return ProductVariant::where('product_id', $productId)->get();
+        return ProductVariant::where('product_id', $productId)
+            ->select('id', 'product_id', 'name', 'sku', 'attributes', 'price', 'quantity', 'images')
+            ->get();
     }
 
     public function findBySku(string $sku): ?ProductVariant

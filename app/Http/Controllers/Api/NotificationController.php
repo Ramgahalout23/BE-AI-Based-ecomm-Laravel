@@ -71,8 +71,11 @@ class NotificationController extends Controller
 
     public function getUnreadNotifications(): JsonResponse
     {
-        $notifications = $this->notificationService->getUnreadNotifications(Auth::id());
-        return response()->json(['success' => true, 'data' => $notifications]);
+        $count = $this->notificationService->getUnreadCount(Auth::id());
+        return response()->json([
+            'success' => true,
+            'data' => ['count' => $count],
+        ]);
     }
 
     public function deleteNotification(string $id): JsonResponse

@@ -150,4 +150,26 @@ class UserProfileController extends Controller
             return response()->json(['success' => true, 'message' => 'Default address updated', 'data' => $this->userProfileService->setDefaultAddress(Auth::id(), $addressId)]);
         } catch (AppError $e) { return $e->render(); }
     }
+
+    /**
+     * Upload a user avatar image.
+     * POST /api/v1/uploads/avatar
+     */
+    public function uploadAvatar(Request $request): JsonResponse
+    {
+        try {
+            $request->validate([
+                'file' => 'required|image|mimes:jpeg,png,jpg,webp|max:5120',
+            ]);
+
+            $result = app(\App\Services\StorageDriverService::class)->storeFile($request->file('file'), 'uploads/avatars');
+
+            return response()->json([
+                'success' => true,
+                'data' => ['url' => $result['url'], 'path' => $result['path']],
+            ]);
+        } catch (\Exception $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
+        }
+    }
 }

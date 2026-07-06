@@ -13,6 +13,15 @@ class CategoryRepository extends BaseRepository
         return Category::class;
     }
 
+    /**
+     * Override all() to only return columns the frontend uses (id, name, slug, image)
+     * instead of SELECT *. The public API caches this for 1 hour.
+     */
+    public function all(array $relations = []): Collection
+    {
+        return $this->model->select(['id', 'name', 'slug', 'image'])->with($relations)->get();
+    }
+
     public function findBySlug(string $slug): ?Category
     {
         return Category::withCount('products')->where('slug', $slug)->first();

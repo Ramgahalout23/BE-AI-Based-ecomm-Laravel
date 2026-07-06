@@ -6,6 +6,7 @@ use App\Repositories\PageRepository;
 use App\Exceptions\AppError;
 use App\Models\Page;
 use App\Services\SeoService;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 
 class PageService
@@ -29,9 +30,11 @@ class PageService
 
     public function getBySlug(string $slug): array
     {
-        $page = $this->pageRepository->findBySlug($slug);
-        if (!$page) throw AppError::notFound('Page not found');
-        return $page->toArray();
+        return Cache::remember("page_by_slug_{$slug}", 3600, function () use ($slug) {
+            $page = $this->pageRepository->findBySlug($slug);
+            if (!$page) throw AppError::notFound('Page not found');
+            return $page->toArray();
+        });
     }
 
     // ── Admin Methods ──
@@ -63,6 +66,7 @@ class PageService
         $page = $this->pageRepository->create($data);
 
         // Clear published pages cache so new page appears in nav
+        Cache::forget('page_by_slug_' . ($data['slug'] ?? Str::slug($data['title'])));
         $this->pageRepository->clearPublishedCache();
 
         // Auto-generate SEO (matches TypeScript SEOService.autoGenerateSEO)
@@ -86,6 +90,8 @@ class PageService
     {
         $page = $this->pageRepository->findById($id);
         if (!$page) throw AppError::notFound('Page not found');
+        $oldSlug = $page->slug;
+
         if (isset($data['status'])) {
             $data['is_published'] = $data['status'] === 'PUBLISHED';
             unset($data['status']);
@@ -96,6 +102,10 @@ class PageService
         $page = $this->pageRepository->update($id, $data);
 
         // Clear cache so nav reflects updated page
+        Cache::forget('page_by_slug_' . $oldSlug);
+        if ($page->slug !== $oldSlug) {
+            Cache::forget('page_by_slug_' . $page->slug);
+        }
         $this->pageRepository->clearPublishedCache();
 
         // Regenerate sitemap (matches TypeScript CmsRoutes sitemap regeneration on update)
@@ -115,6 +125,9 @@ class PageService
         $this->pageRepository->delete($id);
 
         // Clear cache so nav no longer shows deleted page
+        if ($page) {
+            Cache::forget('page_by_slug_' . $page->slug);
+        }
         $this->pageRepository->clearPublishedCache();
 
         // Regenerate sitemap (matches TypeScript CmsRoutes sitemap regeneration on delete)

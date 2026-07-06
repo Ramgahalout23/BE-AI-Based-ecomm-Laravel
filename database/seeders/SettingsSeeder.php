@@ -62,6 +62,15 @@ class SettingsSeeder extends Seeder
             // WhatsApp Button
             ['module' => 'SITE', 'key' => 'whatsappButtonEnabled', 'value' => 'false'],
             ['module' => 'SITE', 'key' => 'whatsappButtonNumber', 'value' => ''],
+            ['module' => 'SITE', 'key' => 'whatsappButtonMessage', 'value' => 'Hi, I need help with my order'],
+            // Phone Lead Banner
+            ['module' => 'SITE', 'key' => 'phoneLeadBannerEnabled', 'value' => 'false'],
+            ['module' => 'SITE', 'key' => 'phoneLeadBannerHeading', 'value' => 'Get 100 Off Your First Order!'],
+            ['module' => 'SITE', 'key' => 'phoneLeadBannerOfferText', 'value' => 'Enter your phone number to receive exclusive offers, updates, and instant 100 discount on your first purchase!'],
+
+
+            // Cookie Consent
+            ['module' => 'SITE', 'key' => 'cookieConsentEnabled', 'value' => 'true'],
 
             // Chat / Support Settings
             ['module' => 'SITE', 'key' => 'chatbotEnabled', 'value' => 'true'],

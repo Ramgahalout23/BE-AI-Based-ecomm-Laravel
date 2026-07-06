@@ -20,7 +20,9 @@ class ShippingRepository extends BaseRepository
 
     public function getAllZones(): \Illuminate\Database\Eloquent\Collection
     {
-        return ShippingZone::with('rates')->get();
+        return ShippingZone::with(['rates' => function ($q) {
+            $q->select('id', 'zone_id', 'name', 'base_rate', 'max_weight');
+        }])->select('id', 'name', 'countries', 'states', 'created_at', 'updated_at')->get();
     }
 
     public function findByTrackingNumber(string $trackingNumber): ?Shipping

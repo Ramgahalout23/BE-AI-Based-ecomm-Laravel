@@ -23,16 +23,23 @@ class MarketingController extends Controller
     {
         try {
             $validated = $request->validate([
-                'email' => 'required|email|max:255',
+                'email' => 'nullable|email|max:255',
                 'name' => 'nullable|string|max:255',
                 'phone' => 'nullable|string|max:20',
             ]);
 
-            $subscriber = $this->marketingService->createSubscriber([
-                'email' => $validated['email'],
+            if (! ($validated['email'] ?? null) && ! ($validated['phone'] ?? null)) {
+                return response()->json(['success' => false, 'message' => 'Email or phone number is required.'], 422);
+            }
+
+            $data = [
+                'email' => $validated['email'] ?? null,
+                'phone' => $validated['phone'] ?? null,
                 'name' => $validated['name'] ?? null,
-                'source' => 'SIGNUP',
-            ]);
+                'source' => ($validated['phone'] ?? null) ? 'PHONE_LEAD' : 'SIGNUP',
+            ];
+
+            $subscriber = $this->marketingService->createSubscriber($data);
 
             return response()->json(['success' => true, 'message' => 'Subscribed successfully', 'data' => $subscriber], 201);
         } catch (\Exception $e) {

@@ -24,8 +24,12 @@ class CategoryService
     /**
      * Clear cached category data when categories are created/updated/deleted.
      */
-    private function clearCache(): void
+    private function clearCache(?string $categoryId = null): void
     {
+        if ($categoryId) {
+            Cache::forget("category_subcategories_{$categoryId}");
+            Cache::forget("category_stats_{$categoryId}");
+        }
         $this->categoryRepository->clearCache();
     }
 
@@ -54,37 +58,41 @@ class CategoryService
 
     public function getSubcategories(string $categoryId): array
     {
-        $category = Category::with(['children' => function ($q) {
-            $q->withCount('products');
-        }])->withCount('products')->find($categoryId);
-        if (!$category) throw AppError::notFound('Category not found');
-        return [
-            'category' => $category->toArray(),
-            'subcategories' => $category->children->toArray(),
-        ];
+        return Cache::remember("category_subcategories_{$categoryId}", 3600, function () use ($categoryId) {
+            $category = Category::with(['children' => function ($q) {
+                $q->withCount('products');
+            }])->withCount('products')->find($categoryId);
+            if (!$category) throw AppError::notFound('Category not found');
+            return [
+                'category' => $category->toArray(),
+                'subcategories' => $category->children->toArray(),
+            ];
+        });
     }
 
     public function getCategoryStats(string $categoryId): array
     {
-        $category = Category::withCount('products')
-            ->with(['children' => function ($q) {
-                $q->withCount('products');
-            }])
-            ->find($categoryId);
-        if (!$category) throw AppError::notFound('Category not found');
+        return Cache::remember("category_stats_{$categoryId}", 3600, function () use ($categoryId) {
+            $category = Category::withCount('products')
+                ->with(['children' => function ($q) {
+                    $q->withCount('products');
+                }])
+                ->find($categoryId);
+            if (!$category) throw AppError::notFound('Category not found');
 
-        $totalProducts = $category->products_count;
-        foreach ($category->children as $child) {
-            $totalProducts += $child->products_count;
-        }
+            $totalProducts = $category->products_count;
+            foreach ($category->children as $child) {
+                $totalProducts += $child->products_count;
+            }
 
-        return [
-            'id' => $category->id,
-            'name' => $category->name,
-            'products_count' => $category->products_count,
-            'total_products_including_subcategories' => $totalProducts,
-            'subcategories_count' => $category->children->count(),
-        ];
+            return [
+                'id' => $category->id,
+                'name' => $category->name,
+                'products_count' => $category->products_count,
+                'total_products_including_subcategories' => $totalProducts,
+                'subcategories_count' => $category->children->count(),
+            ];
+        });
     }
 
     public function create(array $data): array
@@ -112,7 +120,7 @@ class CategoryService
             $data['slug'] = Str::slug($data['name']);
         }
         $category = $this->categoryRepository->update($id, $data);
-        $this->clearCache();
+        $this->clearCache($id);
         return $category->toArray();
     }
 
@@ -126,7 +134,7 @@ class CategoryService
         }
         
         $this->categoryRepository->delete($id);
-        $this->clearCache();
+        $this->clearCache($id);
     }
 
     private function buildTree(array $categories, ?string $parentId = null): array

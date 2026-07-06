@@ -267,22 +267,25 @@ class ProductService
     public function getByCategory(string $categoryId, array $filters = []): array
     {
         $filters['category_id'] = $categoryId;
-        $paginator = $this->productRepository->findMany($filters);
-        $products = $this->decodeVariantAttributesInList(
-            collect($paginator->items())->toArray()
-        );
+        $cacheKey = $this->versionedCacheKey('byCategory', $filters);
+        return Cache::remember($cacheKey, 300, function () use ($filters) {
+            $paginator = $this->productRepository->findMany($filters);
+            $products = $this->decodeVariantAttributesInList(
+                collect($paginator->items())->toArray()
+            );
 
-        return [
-            'data' => $products,
-            'meta' => [
-                'current_page' => $paginator->currentPage(),
-                'from' => $paginator->firstItem(),
-                'last_page' => $paginator->lastPage(),
-                'per_page' => $paginator->perPage(),
-                'to' => $paginator->lastItem(),
-                'total' => $paginator->total(),
-            ],
-        ];
+            return [
+                'data' => $products,
+                'meta' => [
+                    'current_page' => $paginator->currentPage(),
+                    'from' => $paginator->firstItem(),
+                    'last_page' => $paginator->lastPage(),
+                    'per_page' => $paginator->perPage(),
+                    'to' => $paginator->lastItem(),
+                    'total' => $paginator->total(),
+                ],
+            ];
+        });
     }
 
     public function checkAvailability(string $productId, int $quantity = 1): bool

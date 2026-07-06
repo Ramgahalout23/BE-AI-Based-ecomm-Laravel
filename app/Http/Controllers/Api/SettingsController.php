@@ -12,6 +12,15 @@ class SettingsController extends Controller
 {
     public function __construct(protected SettingsService $settingsService) {}
 
+    /**
+     * Flush the app-init cache so that setting changes are reflected immediately
+     * without waiting for the 300s TTL to expire.
+     */
+    private function flushAppInitCache(): void
+    {
+        \Illuminate\Support\Facades\Cache::forget('app_init');
+    }
+
     public function index(): JsonResponse
     {
         return response()->json(['success' => true, 'data' => $this->settingsService->getAll()]);
@@ -25,12 +34,14 @@ class SettingsController extends Controller
     public function update(Request $request): JsonResponse
     {
         $settings = $this->settingsService->updateMultiple($request->all());
+        $this->flushAppInitCache();
         return response()->json(['success' => true, 'message' => 'Settings updated', 'data' => $settings]);
     }
 
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate(['key' => 'required|string', 'value' => 'required']);
+        $this->flushAppInitCache();
         return response()->json(['success' => true, 'data' => $this->settingsService->set($validated['key'], $validated['value'])]);
     }
 
@@ -43,6 +54,7 @@ class SettingsController extends Controller
         if (!empty($validated['message'])) {
             $this->settingsService->set('maintenance_message', $validated['message']);
         }
+        $this->flushAppInitCache();
         return response()->json(['success' => true, 'message' => $validated['enabled'] ? 'Maintenance mode enabled' : 'Maintenance mode disabled', 'data' => $data]);
     }
 
@@ -63,6 +75,7 @@ class SettingsController extends Controller
                 $this->settingsService->set("custom_404_{$key}", $value);
             }
         }
+        $this->flushAppInitCache();
         return response()->json(['success' => true, 'message' => 'Custom 404 settings updated']);
     }
 
@@ -138,6 +151,7 @@ class SettingsController extends Controller
     public function updateByKey(Request $request, string $key): JsonResponse
     {
         $validated = $request->validate(['value' => 'required']);
+        $this->flushAppInitCache();
         return response()->json(['success' => true, 'data' => $this->settingsService->set($key, $validated['value'])]);
     }
 }

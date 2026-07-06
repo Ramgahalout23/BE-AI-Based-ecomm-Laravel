@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Repositories\BannerRepository;
 use App\Exceptions\AppError;
 use App\Models\Setting;
+use Illuminate\Support\Facades\Cache;
 
 class BannerService
 {
@@ -56,6 +57,24 @@ class BannerService
         return array_map(fn(array $b) => $this->toCamelCase($b), $banners);
     }
 
+    /**
+     * Clear all banner caches.
+     */
+    private function clearCache(): void
+    {
+        Cache::forget('banners_hero_desktop');
+        Cache::forget('banners_hero_mobile');
+        Cache::forget('banners_sale_desktop');
+        Cache::forget('banners_sale_mobile');
+        Cache::forget('banners_category_desktop');
+        Cache::forget('banners_category_mobile');
+        Cache::forget('banners_popup');
+        Cache::forget('banners_featured_desktop');
+        Cache::forget('banners_featured_mobile');
+        Cache::forget('banners_new_arrival_desktop');
+        Cache::forget('banners_new_arrival_mobile');
+    }
+
     public function getActive(): array
     {
         return $this->collectionToCamelCase($this->bannerRepository->getActive()->toArray());
@@ -85,7 +104,9 @@ class BannerService
             throw AppError::validation('Invalid banner type');
         }
 
-        return $this->toCamelCase($this->bannerRepository->create($data)->toArray());
+        $result = $this->toCamelCase($this->bannerRepository->create($data)->toArray());
+        $this->clearCache();
+        return $result;
     }
 
     public function update(string $id, array $data): array
@@ -96,21 +117,27 @@ class BannerService
             throw AppError::validation('Invalid banner type');
         }
 
-        return $this->toCamelCase($this->bannerRepository->update($id, $data)->toArray());
+        $result = $this->toCamelCase($this->bannerRepository->update($id, $data)->toArray());
+        $this->clearCache();
+        return $result;
     }
 
     public function delete(string $id): void
     {
         $this->bannerRepository->findByIdOrFail($id);
         $this->bannerRepository->delete($id);
+        $this->clearCache();
     }
 
     /**
-     * Get active banners, optionally filtered by type.
+     * Get active banners, optionally filtered by type — cached for 5 minutes.
      */
     public function getActiveBanners(?string $type = null): array
     {
-        return $this->collectionToCamelCase($this->bannerRepository->getActiveByType($type)->toArray());
+        $cacheKey = $type ? "banners_active_{$type}" : 'banners_active_all';
+        return Cache::remember($cacheKey, 300, function () use ($type) {
+            return $this->collectionToCamelCase($this->bannerRepository->getActiveByType($type)->toArray());
+        });
     }
 
     /**
@@ -128,70 +155,85 @@ class BannerService
     }
 
     /**
-     * Get hero banners — applies bannerDisplayFilter setting if set, otherwise shows all active banners.
+     * Get hero banners — cached for 5 minutes.
      */
     public function getHeroBanners(string $device = 'desktop'): array
     {
-        $banners = $this->bannerRepository->getByTypeAndDevice('HERO', $device)->toArray();
+        $cacheKey = "banners_hero_{$device}";
+        return Cache::remember($cacheKey, 300, function () use ($device) {
+            $banners = $this->bannerRepository->getByTypeAndDevice('HERO', $device)->toArray();
 
-        // Read the global display filter setting (only filter if explicitly configured)
-        $filterMode = null;
-        $setting = Setting::where('key', 'bannerDisplayFilter')->first();
-        if ($setting && in_array($setting->value, ['IMAGE_ONLY', 'DEFAULT'])) {
-            $filterMode = $setting->value;
-        }
+            // Read the global display filter setting (only filter if explicitly configured)
+            $filterMode = null;
+            $setting = Setting::where('key', 'bannerDisplayFilter')->first();
+            if ($setting && in_array($setting->value, ['IMAGE_ONLY', 'DEFAULT'])) {
+                $filterMode = $setting->value;
+            }
 
-        if ($filterMode === null) {
-            // No setting configured — show ALL active banners regardless of display mode
-            $filtered = $banners;
-        } elseif ($filterMode === 'IMAGE_ONLY') {
-            $filtered = array_values(array_filter($banners, fn($b) => ($b['display_mode'] ?? 'DEFAULT') === 'IMAGE_ONLY'));
-        } else {
-            // DEFAULT mode: show banners that are not IMAGE_ONLY
-            $filtered = array_values(array_filter($banners, fn($b) => ($b['display_mode'] ?? 'DEFAULT') !== 'IMAGE_ONLY'));
-        }
+            if ($filterMode === null) {
+                $filtered = $banners;
+            } elseif ($filterMode === 'IMAGE_ONLY') {
+                $filtered = array_values(array_filter($banners, fn($b) => ($b['display_mode'] ?? 'DEFAULT') === 'IMAGE_ONLY'));
+            } else {
+                $filtered = array_values(array_filter($banners, fn($b) => ($b['display_mode'] ?? 'DEFAULT') !== 'IMAGE_ONLY'));
+            }
 
-        return $this->collectionToCamelCase($filtered);
+            return $this->collectionToCamelCase($filtered);
+        });
     }
 
     /**
-     * Get sale banners.
+     * Get sale banners — cached for 5 minutes.
      */
     public function getSaleBanners(string $device = 'desktop'): array
     {
-        return $this->collectionToCamelCase($this->bannerRepository->getByTypeAndDevice('SALE', $device)->toArray());
+        $cacheKey = "banners_sale_{$device}";
+        return Cache::remember($cacheKey, 300, function () use ($device) {
+            return $this->collectionToCamelCase($this->bannerRepository->getByTypeAndDevice('SALE', $device)->toArray());
+        });
     }
 
     /**
-     * Get category banners.
+     * Get category banners — cached for 5 minutes.
      */
     public function getCategoryBanners(string $device = 'desktop'): array
     {
-        return $this->collectionToCamelCase($this->bannerRepository->getByTypeAndDevice('CATEGORY', $device)->toArray());
+        $cacheKey = "banners_category_{$device}";
+        return Cache::remember($cacheKey, 300, function () use ($device) {
+            return $this->collectionToCamelCase($this->bannerRepository->getByTypeAndDevice('CATEGORY', $device)->toArray());
+        });
     }
 
     /**
-     * Get popup banners.
+     * Get popup banners — cached for 5 minutes.
      */
     public function getPopupBanners(): array
     {
-        return $this->collectionToCamelCase($this->bannerRepository->getByTypeAndDevice('POPUP', 'desktop')->toArray());
+        return Cache::remember('banners_popup', 300, function () {
+            return $this->collectionToCamelCase($this->bannerRepository->getByTypeAndDevice('POPUP', 'desktop')->toArray());
+        });
     }
 
     /**
-     * Get featured banners.
+     * Get featured banners — cached for 5 minutes.
      */
     public function getFeaturedBanners(string $device = 'desktop'): array
     {
-        return $this->collectionToCamelCase($this->bannerRepository->getByTypeAndDevice('FEATURED', $device)->toArray());
+        $cacheKey = "banners_featured_{$device}";
+        return Cache::remember($cacheKey, 300, function () use ($device) {
+            return $this->collectionToCamelCase($this->bannerRepository->getByTypeAndDevice('FEATURED', $device)->toArray());
+        });
     }
 
     /**
-     * Get new arrival banners.
+     * Get new arrival banners — cached for 5 minutes.
      */
     public function getNewArrivalBanners(string $device = 'desktop'): array
     {
-        return $this->collectionToCamelCase($this->bannerRepository->getByTypeAndDevice('NEW_ARRIVAL', $device)->toArray());
+        $cacheKey = "banners_new_arrival_{$device}";
+        return Cache::remember($cacheKey, 300, function () use ($device) {
+            return $this->collectionToCamelCase($this->bannerRepository->getByTypeAndDevice('NEW_ARRIVAL', $device)->toArray());
+        });
     }
 
     /**
@@ -200,6 +242,7 @@ class BannerService
     public function toggleStatus(string $id): array
     {
         $banner = $this->bannerRepository->toggleActive($id);
+        $this->clearCache();
         return $this->toCamelCase($banner->toArray());
     }
 
@@ -212,6 +255,7 @@ class BannerService
             throw AppError::validation('Banner IDs are required');
         }
         $this->bannerRepository->reorder($bannerIds);
+        $this->clearCache();
     }
 
     /**

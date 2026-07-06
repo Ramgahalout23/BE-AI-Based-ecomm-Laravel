@@ -84,7 +84,17 @@ class UtilityController extends Controller
         Artisan::call('cache:clear');
         Artisan::call('config:clear');
         Artisan::call('view:clear');
-        return response()->json(['success' => true, 'message' => 'System cache cleared successfully']);
+
+        // Clear translations cache
+        \Illuminate\Support\Facades\Cache::forget('app_init');
+        \Illuminate\Support\Facades\Cache::forget('translations_en_frontend');
+        \Illuminate\Support\Facades\Cache::forget('translations_fr_frontend');
+        \Illuminate\Support\Facades\Cache::forget('translations_hi_frontend');
+        \Illuminate\Support\Facades\Cache::forget('languages_active');
+        \Illuminate\Support\Facades\Cache::forget('language_default');
+        \Illuminate\Support\Facades\Cache::forget('languages_admin');
+
+        return response()->json(['success' => true, 'message' => 'All caches cleared successfully']);
     }
 
     public function databaseSeed(Request $request): JsonResponse

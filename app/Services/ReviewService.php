@@ -58,6 +58,7 @@ class ReviewService
 
         // Update product rating
         $this->reviewRepository->updateProductRating($data['product_id']);
+        $this->reviewRepository->clearProductReviewCache($data['product_id']);
 
         return $review->load('user:id,first_name,last_name,email,avatar')->toArray();
     }
@@ -107,6 +108,7 @@ class ReviewService
 
         // Recalculate product rating
         $this->reviewRepository->updateProductRating($review->product_id);
+        $this->reviewRepository->clearProductReviewCache($review->product_id);
 
         return $updated->fresh()->load('user:id,first_name,last_name,email,avatar')->toArray();
     }
@@ -130,6 +132,7 @@ class ReviewService
         $productId = $review->product_id;
         $this->reviewRepository->delete($id);
         $this->reviewRepository->updateProductRating($productId);
+        $this->reviewRepository->clearProductReviewCache($productId);
     }
 
     /**
@@ -148,6 +151,7 @@ class ReviewService
 
         $review = $this->reviewRepository->update($id, $data);
         $this->reviewRepository->updateProductRating($review->product_id);
+        $this->reviewRepository->clearProductReviewCache($review->product_id);
         return $review->fresh()->load('user', 'product:id,name')->toArray();
     }
 
@@ -213,6 +217,7 @@ class ReviewService
 
         $approved = $this->reviewRepository->approveReview($reviewId);
         $this->reviewRepository->updateProductRating($review->product_id);
+        $this->reviewRepository->clearProductReviewCache($review->product_id);
 
         return $approved->toArray();
     }
@@ -227,7 +232,10 @@ class ReviewService
         $review = $this->reviewRepository->getReviewById($reviewId);
         if (!$review) throw AppError::notFound('Review not found');
 
-        return $this->reviewRepository->rejectReview($reviewId)->toArray();
+        $rejected = $this->reviewRepository->rejectReview($reviewId);
+        $this->reviewRepository->clearProductReviewCache($review->product_id);
+
+        return $rejected->toArray();
     }
 
     /**

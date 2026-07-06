@@ -10,6 +10,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Laravel\Socialite\Facades\Socialite;
+use Illuminate\Support\Facades\Cache;
 
 class AuthController extends Controller
 {
@@ -69,7 +70,10 @@ class AuthController extends Controller
 
     public function me(): JsonResponse
     {
-        $user = Auth::user()->load(['addresses', 'wallet', 'loyaltyPoints', 'vipTier']);
+        $userId = Auth::id();
+        $user = Cache::remember("auth_user_profile:{$userId}", 60, function () use ($userId) {
+            return Auth::user()->load(['addresses', 'wallet', 'loyaltyPoints', 'vipTier']);
+        });
         return response()->json(['success' => true, 'data' => $user]);
     }
 
@@ -91,6 +95,7 @@ class AuthController extends Controller
             ]);
 
             $user = $this->authService->updateProfile(Auth::id(), $validated);
+            Cache::forget('auth_user_profile:' . Auth::id());
             return response()->json(['success' => true, 'message' => 'Profile updated', 'data' => $user]);
         } catch (AppError $e) {
             return $e->render();

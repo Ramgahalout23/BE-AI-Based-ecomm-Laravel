@@ -153,7 +153,10 @@ class CurrencyService
     public function getAllActive(): array
     {
         return Cache::remember('currencies_active', 3600, function () {
-            return CurrencyExchangeRate::where('is_active', true)->get()->toArray();
+            return CurrencyExchangeRate::where('is_active', true)
+                ->select('code', 'name', 'symbol', 'exchange_rate', 'is_default')
+                ->get()
+                ->toArray();
         });
     }
 
@@ -183,11 +186,16 @@ class CurrencyService
     }
 
     /**
-     * Get all currencies (admin).
+     * Get all currencies (admin) — cached + column-selected.
      */
     public function getAll(): array
     {
-        return CurrencyExchangeRate::latest()->get()->toArray();
+        return Cache::remember('currencies_admin', 600, function () {
+            return CurrencyExchangeRate::latest()
+                ->select('id', 'code', 'name', 'symbol', 'exchange_rate', 'last_synced_at', 'is_active', 'is_default')
+                ->get()
+                ->toArray();
+        });
     }
 
     /**
@@ -214,6 +222,7 @@ class CurrencyService
 
         Cache::forget('currencies_active');
         Cache::forget('currency_default');
+        Cache::forget('currencies_admin');
 
         return $currency;
     }
@@ -227,5 +236,6 @@ class CurrencyService
         $currency->delete();
         Cache::forget('currencies_active');
         Cache::forget('currency_default');
+        Cache::forget('currencies_admin');
     }
 }

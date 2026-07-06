@@ -5,6 +5,7 @@ namespace App\Repositories;
 use App\Models\Review;
 use App\Models\Product;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 class ReviewRepository extends BaseRepository
@@ -15,40 +16,62 @@ class ReviewRepository extends BaseRepository
     }
 
     /**
+     * Get the review cache version for a product (incremented on mutations).
+     */
+    private function getReviewVersion(string $productId): int
+    {
+        return Cache::get("reviews_version_{$productId}", 0);
+    }
+
+    /**
+     * Invalidate review caches for a product by bumping the version key.
+     */
+    public function clearProductReviewCache(string $productId): void
+    {
+        $version = $this->getReviewVersion($productId);
+        Cache::forever("reviews_version_{$productId}", $version + 1);
+    }
+
+    /**
      * Get product reviews with pagination, optionally filtered by moderated status.
      */
     public function getProductReviews(string $productId, int $page = 1, int $perPage = 10, bool $onlyModerated = true): array
     {
-        $query = Review::with(['user' => fn($q) => $q->select('id', 'first_name', 'last_name', 'email', 'avatar')])
-            ->where('product_id', $productId)
-            ->where('is_flagged', false);
+        $version = $this->getReviewVersion($productId);
+        $cacheKey = "reviews_product:{$productId}:v{$version}:page{$page}:limit{$perPage}";
 
-        if ($onlyModerated) {
-            $query->where('is_moderated', true);
-        }
+        return Cache::remember($cacheKey, 60, function () use ($productId, $page, $perPage, $onlyModerated) {
+            $query = Review::with(['user' => fn($q) => $q->select('id', 'first_name', 'last_name', 'email', 'avatar')])
+                ->where('product_id', $productId)
+                ->where('is_flagged', false);
 
-        $total = $query->count();
+            if ($onlyModerated) {
+                $query->where('is_moderated', true);
+            }
 
-        $items = $query->latest()
-            ->skip(($page - 1) * $perPage)
-            ->take($perPage)
-            ->get();
+            $total = $query->count();
 
-        $avgRating = Review::where('product_id', $productId)
-            ->where('is_flagged', false)
-            ->where('is_moderated', true)
-            ->avg('rating') ?? 0;
+            $items = $query->latest()
+                ->skip(($page - 1) * $perPage)
+                ->take($perPage)
+                ->get();
 
-        $totalPages = (int) ceil($total / $perPage);
+            $avgRating = Review::where('product_id', $productId)
+                ->where('is_flagged', false)
+                ->where('is_moderated', true)
+                ->avg('rating') ?? 0;
 
-        return [
-            'items' => $items,
-            'total' => $total,
-            'page' => $page,
-            'limit' => $perPage,
-            'total_pages' => $totalPages,
-            'average_rating' => round((float) $avgRating, 2),
-        ];
+            $totalPages = (int) ceil($total / $perPage);
+
+            return [
+                'items' => $items,
+                'total' => $total,
+                'page' => $page,
+                'limit' => $perPage,
+                'total_pages' => $totalPages,
+                'average_rating' => round((float) $avgRating, 2),
+            ];
+        });
     }
 
     /**
@@ -78,33 +101,38 @@ class ReviewRepository extends BaseRepository
     }
 
     /**
-     * Get review stats for a product — single DB round-trip.
+     * Get review stats for a product — cached with version invalidation.
      */
     public function getStats(string $productId): array
     {
-        $distribution = Review::where('product_id', $productId)
-            ->where('is_flagged', false)
-            ->where('is_moderated', true)
-            ->selectRaw('rating, count(*) as count')
-            ->groupBy('rating')
-            ->pluck('count', 'rating')
-            ->toArray();
+        $version = $this->getReviewVersion($productId);
+        $cacheKey = "reviews_stats:{$productId}:v{$version}";
 
-        $filled = [1 => 0, 2 => 0, 3 => 0, 4 => 0, 5 => 0];
-        foreach ($distribution as $rating => $count) {
-            $filled[(int) $rating] = $count;
-        }
+        return Cache::remember($cacheKey, 120, function () use ($productId) {
+            $distribution = Review::where('product_id', $productId)
+                ->where('is_flagged', false)
+                ->where('is_moderated', true)
+                ->selectRaw('rating, count(*) as count')
+                ->groupBy('rating')
+                ->pluck('count', 'rating')
+                ->toArray();
 
-        $total = array_sum($filled);
-        $average = $total > 0
-            ? round(array_sum(array_map(fn($r, $c) => $r * $c, [1,2,3,4,5], $filled)) / $total, 2)
-            : 0;
+            $filled = [1 => 0, 2 => 0, 3 => 0, 4 => 0, 5 => 0];
+            foreach ($distribution as $rating => $count) {
+                $filled[(int) $rating] = $count;
+            }
 
-        return [
-            'average' => $average,
-            'total' => $total,
-            'distribution' => $filled,
-        ];
+            $total = array_sum($filled);
+            $average = $total > 0
+                ? round(array_sum(array_map(fn($r, $c) => $r * $c, [1,2,3,4,5], $filled)) / $total, 2)
+                : 0;
+
+            return [
+                'average' => $average,
+                'total' => $total,
+                'distribution' => $filled,
+            ];
+        });
     }
 
     /**
@@ -228,30 +256,35 @@ class ReviewRepository extends BaseRepository
     }
 
     /**
-     * Get verified purchase reviews only.
+     * Get verified purchase reviews only — cached with version invalidation.
      */
     public function getVerifiedReviews(string $productId, int $page = 1, int $perPage = 10): array
     {
-        $query = Review::with(['user' => fn($q) => $q->select('id', 'first_name', 'last_name', 'email', 'avatar')])
-            ->where('product_id', $productId)
-            ->where('is_verified', true)
-            ->where('is_flagged', false)
-            ->where('is_moderated', true);
+        $version = $this->getReviewVersion($productId);
+        $cacheKey = "reviews_verified:{$productId}:v{$version}:page{$page}:limit{$perPage}";
 
-        $total = $query->count();
-        $items = $query->latest()
-            ->skip(($page - 1) * $perPage)
-            ->take($perPage)
-            ->get();
+        return Cache::remember($cacheKey, 60, function () use ($productId, $page, $perPage) {
+            $query = Review::with(['user' => fn($q) => $q->select('id', 'first_name', 'last_name', 'email', 'avatar')])
+                ->where('product_id', $productId)
+                ->where('is_verified', true)
+                ->where('is_flagged', false)
+                ->where('is_moderated', true);
 
-        $totalPages = (int) ceil($total / $perPage);
+            $total = $query->count();
+            $items = $query->latest()
+                ->skip(($page - 1) * $perPage)
+                ->take($perPage)
+                ->get();
 
-        return [
-            'items' => $items,
-            'total' => $total,
-            'page' => $page,
-            'limit' => $perPage,
-            'total_pages' => $totalPages,
-        ];
+            $totalPages = (int) ceil($total / $perPage);
+
+            return [
+                'items' => $items,
+                'total' => $total,
+                'page' => $page,
+                'limit' => $perPage,
+                'total_pages' => $totalPages,
+            ];
+        });
     }
 }

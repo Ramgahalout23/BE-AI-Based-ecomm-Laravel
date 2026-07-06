@@ -3,6 +3,7 @@
 namespace App\Exceptions;
 
 use Illuminate\Auth\AuthenticationException;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Exceptions\Handler as ExceptionHandler;
 use Throwable;
 
@@ -23,6 +24,34 @@ class Handler extends ExceptionHandler
 
     public function render($request, Throwable $e)
     {
+        // ── Database connection errors ──
+        if ($e instanceof QueryException) {
+            $code = $e->getCode();
+            $isConnectionError = (
+                str_contains($e->getMessage(), 'Connection refused') ||
+                str_contains($e->getMessage(), 'could not find driver') ||
+                str_contains($e->getMessage(), 'could not connect') ||
+                str_contains($e->getMessage(), 'Unknown database') ||
+                str_contains($e->getMessage(), 'Access denied')
+            );
+
+            if ($isConnectionError && $request->expectsJson()) {
+                $dbConfig = config('database.connections.' . config('database.default'));
+                return response()->json([
+                    'success' => false,
+                    'error' => 'database_connection_failed',
+                    'message' => 'Database connection failed. Check your .env database settings.',
+                    'debug' => app()->environment('local') ? [
+                        'driver' => config('database.default'),
+                        'host' => $dbConfig['host'] ?? 'unknown',
+                        'port' => $dbConfig['port'] ?? 'unknown',
+                        'database' => $dbConfig['database'] ?? 'unknown',
+                        'error_message' => $e->getMessage(),
+                    ] : null,
+                ], 500);
+            }
+        }
+
         if ($e instanceof AppError) {
             if ($request->expectsJson()) {
                 return $e->render();

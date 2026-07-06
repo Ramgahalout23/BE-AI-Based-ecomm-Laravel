@@ -14,7 +14,8 @@ class BannerRepository extends BaseRepository
 
     public function getActive(): \Illuminate\Database\Eloquent\Collection
     {
-        return Banner::where('is_active', true)
+        return Banner::select('id', 'title', 'description', 'image_url', 'link_url', 'type', 'position', 'is_active', 'display_mode', 'start_date', 'end_date', 'show_on_mobile', 'show_on_desktop', 'background_color', 'text_color', 'button_text', 'button_link')
+            ->where('is_active', true)
             ->where(function ($q) {
                 $q->whereNull('start_date')->orWhere('start_date', '<=', now());
             })
@@ -30,7 +31,8 @@ class BannerRepository extends BaseRepository
      */
     public function getActiveByType(?string $type = null): \Illuminate\Database\Eloquent\Collection
     {
-        $query = Banner::where('is_active', true)
+        $query = Banner::select('id', 'title', 'description', 'image_url', 'link_url', 'type', 'position', 'is_active', 'display_mode', 'start_date', 'end_date', 'show_on_mobile', 'show_on_desktop', 'background_color', 'text_color', 'button_text', 'button_link')
+            ->where('is_active', true)
             ->where(function ($q) {
                 $q->whereNull('start_date')->orWhere('start_date', '<=', now());
             })
@@ -50,7 +52,8 @@ class BannerRepository extends BaseRepository
      */
     public function getByTypeAndDevice(string $type, string $device = 'desktop'): \Illuminate\Database\Eloquent\Collection
     {
-        $query = Banner::where('is_active', true)
+        $query = Banner::select('id', 'title', 'description', 'image_url', 'link_url', 'type', 'position', 'is_active', 'display_mode', 'start_date', 'end_date', 'show_on_mobile', 'show_on_desktop', 'background_color', 'text_color', 'button_text', 'button_link')
+            ->where('is_active', true)
             ->where('type', strtoupper($type))
             ->where(function ($q) {
                 $q->whereNull('start_date')->orWhere('start_date', '<=', now());

@@ -375,50 +375,40 @@ class InventoryService
      */
     public function getStats(): array
     {
-        $variantProductIds = ProductVariant::distinct('product_id')->pluck('product_id');
+        // Single query: get all variant product IDs + their stock aggregates at once
+        $variantStats = ProductVariant::select('product_id')
+            ->selectRaw('SUM(quantity) as total_stock')
+            ->groupBy('product_id')
+            ->get();
+
+        $variantProductIds = $variantStats->pluck('product_id');
         $productsWithVariants = $variantProductIds->count();
 
-        // Bug 1 fix: count actual products, not inventory records
+        // Count total products
         $totalProducts = \App\Models\Product::count();
         $productsWithoutVariants = $totalProducts - $productsWithVariants;
 
-        // Bug 2 fix: total available = variant stock + product.quantity for non-variant products
-        $totalVariantStock = (int) ProductVariant::sum('quantity');
+        // Total available = variant stock + product.quantity for non-variant products
+        $totalVariantStock = (int) $variantStats->sum('total_stock');
         $totalSimpleStock = (int) \App\Models\Product::whereNotIn('id', $variantProductIds)->sum('quantity');
         $totalAvailable = $totalVariantStock + $totalSimpleStock;
 
-        // Low stock — products with variants (sum of variant quantity > 0 and <= 5)
-        $lowStockVariants = ProductVariant::select('product_id')
-            ->selectRaw('SUM(quantity) as total_stock')
-            ->groupBy('product_id')
-            ->having('total_stock', '<=', 5)
-            ->having('total_stock', '>', 0)
-            ->get()
-            ->count();
+        // Use the already-fetched $variantStats to classify low/out-of-stock (no extra query)
+        $lowStockVariants = $variantStats->filter(fn($s) => $s->total_stock > 0 && $s->total_stock <= 5)->count();
+        $outOfStockVariants = $variantStats->filter(fn($s) => $s->total_stock <= 0)->count();
 
-        // Out of stock — products with variants (sum of variant quantity <= 0)
-        $outOfStockVariants = ProductVariant::select('product_id')
-            ->selectRaw('SUM(quantity) as total_stock')
-            ->groupBy('product_id')
-            ->having('total_stock', '<=', 0)
-            ->get()
-            ->count();
-
-        // Bug 3 fix: low stock / out of stock for non-variant products (use product.quantity)
-        $lowStockSimple = \App\Models\Product::whereNotIn('id', $variantProductIds)
-            ->where('quantity', '>', 0)
-            ->where('quantity', '<=', 5)
-            ->count();
-
-        $outOfStockSimple = \App\Models\Product::whereNotIn('id', $variantProductIds)
-            ->where('quantity', '<=', 0)
-            ->count();
+        // Non-variant product counts — single combined query with conditional aggregation
+        $simpleProductCounts = \App\Models\Product::whereNotIn('id', $variantProductIds)
+            ->selectRaw("COUNT(*) as total")
+            ->selectRaw("SUM(CASE WHEN quantity > 0 AND quantity <= 5 THEN 1 ELSE 0 END) as low_stock")
+            ->selectRaw("SUM(CASE WHEN quantity <= 0 THEN 1 ELSE 0 END) as out_of_stock")
+            ->first();
 
         return [
             'total_products' => $totalProducts,
             'total_available' => $totalAvailable,
-            'low_stock' => $lowStockVariants + $lowStockSimple,
-            'out_of_stock' => $outOfStockVariants + $outOfStockSimple,
+            'low_stock' => $lowStockVariants + (int) ($simpleProductCounts->low_stock ?? 0),
+            'out_of_stock' => $outOfStockVariants + (int) ($simpleProductCounts->out_of_stock ?? 0),
             'variant_managed' => $productsWithVariants,
             'product_managed' => $productsWithoutVariants,
         ];

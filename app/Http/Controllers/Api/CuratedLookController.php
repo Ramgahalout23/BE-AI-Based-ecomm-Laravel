@@ -7,6 +7,7 @@ use App\Models\CuratedLook;
 use App\Models\Setting;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 
 class CuratedLookController extends Controller
@@ -17,42 +18,56 @@ class CuratedLookController extends Controller
      */
     public function index(): JsonResponse
     {
-        // Master toggle: check if curated looks section is enabled
-        $looksEnabled = Setting::where('key', 'curatedLooksEnabled')->value('value');
+        // Master toggle: check if curated looks section is enabled (cached 5 min)
+        $looksEnabled = Cache::remember('setting_curatedLooksEnabled', 300, function () {
+            return Setting::where('key', 'curatedLooksEnabled')->value('value');
+        });
+
         if ($looksEnabled === 'false' || $looksEnabled === '0') {
             return response()->json([
                 'success' => true,
                 'data' => [],
-            ]);
+            ])->setCache(['public' => true, 'max_age' => 300]);
         }
 
-        $looks = CuratedLook::with('products.images')
-            ->where('is_active', true)
-            ->orderBy('display_order')
-            ->orderBy('created_at', 'desc')
-            ->get()
-            ->map(fn ($look) => [
-                'id' => $look->id,
-                'name' => $look->name,
-                'slug' => $look->slug,
-                'image_url' => $look->image_url,
-                'description' => $look->description,
-                'display_order' => $look->display_order,
-                'products' => $look->products->map(fn ($p) => [
-                    'id' => $p->id,
-                    'name' => $p->name,
-                    'slug' => $p->slug,
-                    'price' => $p->price,
-                    'old_price' => $p->old_price,
-                    'image_url' => optional($p->images->first())->url,
-                    'rating' => $p->rating,
-                ]),
-            ]);
+        // Cache entire response data for 5 minutes — curated looks change infrequently
+        $data = Cache::remember('curated_looks_data', 300, function () {
+            return CuratedLook::with([
+                    'products' => function ($q) {
+                        $q->select('products.id', 'products.name', 'products.slug', 'products.price', 'products.old_price', 'products.rating');
+                    },
+                    'products.images' => function ($q) {
+                        $q->select('product_images.id', 'product_images.product_id', 'product_images.url');
+                    },
+                ])
+                ->where('is_active', true)
+                ->orderBy('display_order')
+                ->orderBy('created_at', 'desc')
+                ->select('id', 'name', 'slug', 'image_url', 'description', 'display_order')
+                ->get()
+                ->map(fn ($look) => [
+                    'id' => $look->id,
+                    'name' => $look->name,
+                    'slug' => $look->slug,
+                    'image_url' => $look->image_url,
+                    'description' => $look->description,
+                    'display_order' => $look->display_order,
+                    'products' => $look->products->map(fn ($p) => [
+                        'id' => $p->id,
+                        'name' => $p->name,
+                        'slug' => $p->slug,
+                        'price' => $p->price,
+                        'old_price' => $p->old_price,
+                        'image_url' => optional($p->images->first())->url,
+                        'rating' => $p->rating,
+                    ]),
+                ]);
+        });
 
         return response()->json([
             'success' => true,
-            'data' => $looks,
-        ]);
+            'data' => $data,
+        ])->setCache(['public' => true, 'max_age' => 300]);
     }
 
     /**
@@ -61,7 +76,17 @@ class CuratedLookController extends Controller
      */
     public function adminIndex(Request $request): JsonResponse
     {
-        $query = CuratedLook::with('products.images')->orderBy('display_order')->orderBy('created_at', 'desc');
+        $query = CuratedLook::select('id', 'name', 'slug', 'image_url', 'description', 'display_order', 'is_active', 'created_at')
+            ->with([
+                'products' => function ($q) {
+                    $q->select('products.id', 'products.name', 'products.slug', 'products.price');
+                },
+                'products.images' => function ($q) {
+                    $q->select('product_images.id', 'product_images.product_id', 'product_images.url');
+                },
+            ])
+            ->orderBy('display_order')
+            ->orderBy('created_at', 'desc');
 
         if ($request->has('is_active')) {
             $query->where('is_active', filter_var($request->is_active, FILTER_VALIDATE_BOOLEAN));
@@ -87,7 +112,16 @@ class CuratedLookController extends Controller
      */
     public function show(string $id): JsonResponse
     {
-        $look = CuratedLook::with('products.images')->findOrFail($id);
+        $look = CuratedLook::select('id', 'name', 'slug', 'image_url', 'description', 'display_order', 'is_active', 'created_at', 'updated_at')
+            ->with([
+                'products' => function ($q) {
+                    $q->select('products.id', 'products.name', 'products.slug', 'products.price', 'products.old_price', 'products.rating');
+                },
+                'products.images' => function ($q) {
+                    $q->select('product_images.id', 'product_images.product_id', 'product_images.url', 'product_images.alt', 'product_images.display_order');
+                },
+            ])
+            ->findOrFail($id);
         return response()->json(['success' => true, 'data' => $look]);
     }
 
@@ -108,6 +142,8 @@ class CuratedLookController extends Controller
         $validated['slug'] = Str::slug($validated['name']) . '-' . Str::random(6);
 
         $look = CuratedLook::create($validated);
+
+        Cache::forget('curated_looks_data');
 
         return response()->json([
             'success' => true,
@@ -138,6 +174,8 @@ class CuratedLookController extends Controller
 
         $look->update($validated);
 
+        Cache::forget('curated_looks_data');
+
         return response()->json([
             'success' => true,
             'message' => 'Curated look updated',
@@ -153,6 +191,8 @@ class CuratedLookController extends Controller
     {
         $look = CuratedLook::findOrFail($id);
         $look->delete();
+
+        Cache::forget('curated_looks_data');
 
         return response()->json([
             'success' => true,
@@ -175,6 +215,8 @@ class CuratedLookController extends Controller
         foreach ($validated['looks'] as $item) {
             CuratedLook::where('id', $item['id'])->update(['display_order' => $item['display_order']]);
         }
+
+        Cache::forget('curated_looks_data');
 
         return response()->json([
             'success' => true,
@@ -205,6 +247,8 @@ class CuratedLookController extends Controller
         $look->products()->sync($syncData);
 
         $look->load('products');
+
+        Cache::forget('curated_looks_data');
 
         return response()->json([
             'success' => true,
