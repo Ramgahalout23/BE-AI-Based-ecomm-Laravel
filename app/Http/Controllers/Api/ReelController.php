@@ -56,10 +56,13 @@ class ReelController extends Controller
                         'slug' => $p->slug,
                         'price' => $p->price,
                         'old_price' => $p->old_price,
+                        'oldPrice' => $p->old_price,
                         'rating' => $p->rating,
                         'review_count' => $p->review_count,
+                        'reviewCount' => $p->review_count,
                         'badge' => $p->badge,
                         'image_url' => $p->images->first()?->url ?? null,
+                        'imageUrl' => $p->images->first()?->url ?? null,
                     ]),
                 ]);
         });

@@ -58,7 +58,9 @@ class CuratedLookController extends Controller
                         'slug' => $p->slug,
                         'price' => $p->price,
                         'old_price' => $p->old_price,
+                        'oldPrice' => $p->old_price,
                         'image_url' => optional($p->images->first())->url,
+                        'imageUrl' => optional($p->images->first())->url,
                         'rating' => $p->rating,
                     ]),
                 ]);

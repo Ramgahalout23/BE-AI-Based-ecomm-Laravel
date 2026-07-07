@@ -86,6 +86,37 @@ class ProductService
     }
 
     /**
+     * Snake-to-camelCase mapping for product fields.
+     * The frontend ProductCard component expects camelCase keys.
+     */
+    private const PRODUCT_CAMEL_MAP = [
+        'old_price'          => 'oldPrice',
+        'short_description'  => 'shortDescription',
+        'review_count'       => 'reviewCount',
+        'is_featured'        => 'isFeatured',
+        'is_new'             => 'isNew',
+        'image_url'          => 'imageUrl',
+        'category_id'        => 'categoryId',
+        'brand_id'           => 'brandId',
+        'created_at'         => 'createdAt',
+        'updated_at'         => 'updatedAt',
+        'display_order'      => 'displayOrder',
+    ];
+
+    /**
+     * Add camelCase keys to a single product array (preserving original snake_case keys).
+     */
+    private function productToCamelCase(array $product): array
+    {
+        foreach (self::PRODUCT_CAMEL_MAP as $snake => $camel) {
+            if (array_key_exists($snake, $product)) {
+                $product[$camel] = $product[$snake];
+            }
+        }
+        return $product;
+    }
+
+    /**
      * Decode variant attributes and compute sizes/colors for a list of products.
      * This ensures the frontend receives proper attribute objects (not double-encoded strings)
      * AND computed sizes/colors arrays on every product, matching single-product detail responses.
@@ -94,6 +125,9 @@ class ProductService
     {
         // Filter out non-array items (e.g., stale cached IDs) to prevent TypeError
         return array_map(function (array $product): array {
+            // Map snake_case DB fields to camelCase for the frontend
+            $product = $this->productToCamelCase($product);
+
             if (isset($product['variants']) && is_array($product['variants'])) {
                 $sizes = [];
                 $colors = [];
@@ -128,6 +162,9 @@ class ProductService
      */
     private function enrichWithVariantFields(array $productData): array
     {
+        // Map snake_case DB fields to camelCase for the frontend
+        $productData = $this->productToCamelCase($productData);
+
         // Load variants if not already loaded
         if (isset($productData['variants']) && is_array($productData['variants'])) {
             $sizes = [];

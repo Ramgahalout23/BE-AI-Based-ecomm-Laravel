@@ -12,4 +12,5 @@ class TicketMessage extends Model
     protected $fillable = ['content', 'is_from_admin', 'ticket_id', 'sender_id'];
     protected $casts = ['is_from_admin' => 'boolean'];
     public function ticket(): BelongsTo { return $this->belongsTo(SupportTicket::class, 'ticket_id'); }
+    public function sender(): BelongsTo { return $this->belongsTo(User::class, 'sender_id'); }
 }

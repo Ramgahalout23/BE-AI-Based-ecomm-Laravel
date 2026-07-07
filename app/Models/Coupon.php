@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
@@ -28,6 +29,8 @@ class Coupon extends Model
         'schedule_start' => 'datetime', 'schedule_end' => 'datetime',
     ];
 
+    public function campaign(): BelongsTo { return $this->belongsTo(CouponCampaign::class, 'campaign_id'); }
+    public function createdBy(): BelongsTo { return $this->belongsTo(User::class, 'created_by'); }
     public function analytics(): HasOne { return $this->hasOne(CouponAnalytics::class); }
     public function usages(): HasMany { return $this->hasMany(CouponUsage::class); }
     public function orders(): HasMany { return $this->hasMany(Order::class); }

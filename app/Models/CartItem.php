@@ -15,4 +15,5 @@ class CartItem extends Model
     public function user(): BelongsTo { return $this->belongsTo(User::class); }
     public function product(): BelongsTo { return $this->belongsTo(Product::class); }
     public function guestCart(): BelongsTo { return $this->belongsTo(GuestCart::class); }
+    public function variant(): BelongsTo { return $this->belongsTo(ProductVariant::class); }
 }

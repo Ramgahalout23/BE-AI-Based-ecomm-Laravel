@@ -13,6 +13,29 @@ class WishlistRepository extends BaseRepository
     }
 
     /**
+     * Map a product array from snake_case (DB) to camelCase for the frontend.
+     */
+    private function productToCamelCase(?array $product): ?array
+    {
+        if (!$product) return null;
+        $map = [
+            'old_price'     => 'oldPrice',
+            'is_featured'   => 'isFeatured',
+            'category_id'   => 'categoryId',
+            'created_at'    => 'createdAt',
+            'updated_at'    => 'updatedAt',
+            'review_count'  => 'reviewCount',
+            'display_order' => 'displayOrder',
+        ];
+        foreach ($map as $snake => $camel) {
+            if (array_key_exists($snake, $product)) {
+                $product[$camel] = $product[$snake];
+            }
+        }
+        return $product;
+    }
+
+    /**
      * Get user's wishlist items with pagination and product details.
      */
     public function getUserWishlist(string $userId, int $page = 1, int $limit = 20): array
@@ -29,7 +52,14 @@ class WishlistRepository extends BaseRepository
         $items = $query->latest()
             ->skip(($page - 1) * $limit)
             ->take($limit)
-            ->get();
+            ->get()
+            ->map(function ($item) {
+                $data = $item->toArray();
+                if (isset($data['product'])) {
+                    $data['product'] = $this->productToCamelCase($data['product']);
+                }
+                return $data;
+            });
 
         return [
             'items' => $items,

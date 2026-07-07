@@ -56,6 +56,73 @@ class HomepageController extends Controller
     ];
 
     /**
+     * Decode variant attributes and compute sizes/colors on product arrays.
+     * Mirrors ProductService::decodeVariantAttributesInList to ensure homepage
+     * products have properly decoded variant attributes and computed size/color arrays.
+     */
+    /**
+     * Snake-to-camelCase mapping for product fields.
+     * The frontend ProductCard component expects camelCase keys.
+     */
+    private const PRODUCT_CAMEL_MAP = [
+        'old_price'          => 'oldPrice',
+        'short_description'  => 'shortDescription',
+        'review_count'       => 'reviewCount',
+        'is_featured'        => 'isFeatured',
+        'image_url'          => 'imageUrl',
+        'category_id'        => 'categoryId',
+        'brand_id'           => 'brandId',
+        'created_at'         => 'createdAt',
+        'updated_at'         => 'updatedAt',
+        'display_order'      => 'displayOrder',
+    ];
+
+    /**
+     * Add camelCase keys to a single product array (preserving original snake_case keys).
+     */
+    private function productToCamelCase(array $product): array
+    {
+        foreach (self::PRODUCT_CAMEL_MAP as $snake => $camel) {
+            if (array_key_exists($snake, $product)) {
+                $product[$camel] = $product[$snake];
+            }
+        }
+        return $product;
+    }
+
+    private function decodeVariants(array $products): array
+    {
+        return array_map(function (array $product): array {
+            // Map snake_case DB fields to camelCase for the frontend
+            $product = $this->productToCamelCase($product);
+
+            if (isset($product['variants']) && is_array($product['variants'])) {
+                $sizes = [];
+                $colors = [];
+
+                foreach ($product['variants'] as &$variant) {
+                    if (is_string($variant['attributes'] ?? null)) {
+                        $variant['attributes'] = json_decode($variant['attributes'], true) ?? [];
+                    }
+
+                    $attrs = $variant['attributes'] ?? [];
+                    if (!empty($attrs['size'])) {
+                        $sizes[] = $attrs['size'];
+                    }
+                    if (!empty($attrs['color'])) {
+                        $colors[] = $attrs['color'];
+                    }
+                }
+                unset($variant);
+
+                $product['sizes'] = array_values(array_unique($sizes));
+                $product['colors'] = array_values(array_unique($colors));
+            }
+            return $product;
+        }, array_filter($products, 'is_array'));
+    }
+
+    /**
      * Add camelCase keys to a single banner array (preserving original snake_case keys).
      */
     private function bannerToCamelCase(array $b): array
@@ -132,7 +199,7 @@ class HomepageController extends Controller
             // ── 3. Featured Products ──
             $featured = [];
             try {
-                $featured = Product::with([
+                $featured = $this->decodeVariants(Product::with([
                     'category:id,name,slug,image',
                     'images:id,product_id,url,alt,display_order',
                     'variants:id,product_id,name,sku,attributes,price,quantity,images',
@@ -142,7 +209,7 @@ class HomepageController extends Controller
                     ->latest()
                     ->take(8)
                     ->get()
-                    ->toArray();
+                    ->toArray());
             } catch (\Exception $e) {
                 logger()->warning('Homepage: featured fetch failed', ['error' => $e->getMessage()]);
             }
@@ -150,7 +217,7 @@ class HomepageController extends Controller
             // ── 4. New Arrivals ──
             $newArrivals = [];
             try {
-                $newArrivals = Product::with([
+                $newArrivals = $this->decodeVariants(Product::with([
                     'category:id,name,slug,image',
                     'images:id,product_id,url,alt,display_order',
                     'variants:id,product_id,name,sku,attributes,price,quantity,images',
@@ -159,7 +226,7 @@ class HomepageController extends Controller
                     ->latest()
                     ->take(8)
                     ->get()
-                    ->toArray();
+                    ->toArray());
             } catch (\Exception $e) {
                 logger()->warning('Homepage: newArrivals fetch failed', ['error' => $e->getMessage()]);
             }
@@ -169,7 +236,7 @@ class HomepageController extends Controller
             try {
                 $bestSellersEnabled = $settings['bestSellersEnabled'] ?? 'true';
                 if ($bestSellersEnabled !== 'false' && $bestSellersEnabled !== '0') {
-                    $bestSellers = Product::with([
+                    $bestSellers = $this->decodeVariants(Product::with([
                         'category:id,name,slug,image',
                         'images:id,product_id,url,alt,display_order',
                         'variants:id,product_id,name,sku,attributes,price,quantity,images',
@@ -178,7 +245,7 @@ class HomepageController extends Controller
                         ->orderBy('view_count', 'desc')
                         ->take(8)
                         ->get()
-                        ->toArray();
+                        ->toArray());
                 }
             } catch (\Exception $e) {
                 logger()->warning('Homepage: bestSellers fetch failed', ['error' => $e->getMessage()]);

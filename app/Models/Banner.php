@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Banner extends Model
@@ -16,4 +17,6 @@ class Banner extends Model
         'text_dark', 'display_mode', 'button_text', 'button_link', 'created_by'
     ];
     protected $casts = ['is_active' => 'boolean', 'show_on_mobile' => 'boolean', 'show_on_desktop' => 'boolean', 'text_dark' => 'boolean', 'start_date' => 'datetime', 'end_date' => 'datetime'];
+
+    public function createdBy(): BelongsTo { return $this->belongsTo(User::class, 'created_by'); }
 }

@@ -20,5 +20,6 @@ class Campaign extends Model
         'sent_count' => 'integer', 'opened_count' => 'integer', 'clicked_count' => 'integer',
         'bounced_count' => 'integer', 'unsubscribed_count' => 'integer', 'complained_count' => 'integer', 'failed_count' => 'integer'
     ];
+    public function createdBy(): BelongsTo { return $this->belongsTo(User::class, 'created_by'); }
     public function recipients(): HasMany { return $this->hasMany(CampaignRecipient::class); }
 }

@@ -17,4 +17,6 @@ class CheckoutSession extends Model
     protected $casts = ['wallet_used' => 'decimal:2', 'partial_payment' => 'boolean'];
     public function user(): BelongsTo { return $this->belongsTo(User::class); }
     public function coupon(): BelongsTo { return $this->belongsTo(Coupon::class); }
+    public function shippingAddress(): BelongsTo { return $this->belongsTo(Address::class, 'shipping_address_id'); }
+    public function billingAddress(): BelongsTo { return $this->belongsTo(Address::class, 'billing_address_id'); }
 }
