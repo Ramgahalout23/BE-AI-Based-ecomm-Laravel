@@ -37,16 +37,36 @@ class ReviewController extends Controller
     public function store(Request $request): JsonResponse
     {
         try {
-            $validated = $request->validate([
-                'product_id' => 'required|string|exists:products,id',
+            $type = $request->string('type', 'product');
+
+            $rules = [
+                'type' => 'sometimes|string|in:product,store',
                 'order_id' => 'nullable|string|exists:orders,id',
                 'rating' => 'required|integer|min:1|max:5',
                 'title' => 'nullable|string|max:255',
                 'comment' => 'nullable|string',
                 'images' => 'nullable|array',
                 'images.*' => 'nullable|string',
-            ]);
-            $review = $this->reviewService->create(Auth::id(), $validated);
+                // Store reviews capture name + email directly (no auth required)
+                'name' => 'required_if:type,store|string|max:255',
+                'email' => 'required_if:type,store|email|max:255',
+            ];
+
+            // Product reviews require product_id; store reviews don't
+            if ($type === 'store') {
+                $rules['product_id'] = 'nullable|string|exists:products,id';
+            } else {
+                $rules['product_id'] = 'required|string|exists:products,id';
+            }
+
+            $validated = $request->validate($rules);
+
+            if ($type === 'store') {
+                $review = $this->reviewService->createStoreReview($validated);
+            } else {
+                $review = $this->reviewService->create(Auth::id(), $validated);
+            }
+
             Cache::forget('reviews_homepage_data');
             return response()->json(['success' => true, 'message' => 'Review submitted', 'data' => $review], 201);
         } catch (AppError $e) { return $e->render(); }
@@ -96,6 +116,7 @@ class ReviewController extends Controller
         $limit = $request->integer('limit', 15);
         $status = $request->string('status'); // approved, pending, rejected, or null = all
         $search = $request->string('search');
+        $type = $request->string('type'); // product, store, or null = all
 
         $query = \App\Models\Review::with([
             'user' => fn($q) => $q->select('id', 'first_name', 'last_name', 'email', 'avatar'),
@@ -111,11 +132,18 @@ class ReviewController extends Controller
             $query->where('is_flagged', true);
         }
 
+        // Type filter (product vs store review)
+        if ($type && in_array($type, ['product', 'store'])) {
+            $query->where('type', $type);
+        }
+
         // Search filter
         if ($search) {
             $query->where(function ($q) use ($search) {
                 $q->where('title', 'like', "%{$search}%")
-                  ->orWhere('comment', 'like', "%{$search}%");
+                  ->orWhere('comment', 'like', "%{$search}%")
+                  ->orWhere('name', 'like', "%{$search}%")
+                  ->orWhere('email', 'like', "%{$search}%");
             });
         }
 
@@ -124,8 +152,16 @@ class ReviewController extends Controller
         // Map snake_case to camelCase for frontend
         $items = collect($reviews->items())->map(function ($review) {
             $review->createdAt = $review->created_at;
-            $review->userName = $review->user?->first_name ? trim($review->user->first_name . ' ' . $review->user->last_name) : 'Customer';
-            $review->productName = $review->product?->name ?? '—';
+            // For store reviews, use name/email from the review record directly
+            if ($review->type === 'store') {
+                $review->userName = $review->name ?? 'Customer';
+                $review->userEmail = $review->email ?? '';
+                $review->productName = 'Store Review';
+            } else {
+                $review->userName = $review->user?->first_name ? trim($review->user->first_name . ' ' . $review->user->last_name) : 'Customer';
+                $review->userEmail = $review->user?->email ?? '';
+                $review->productName = $review->product?->name ?? '—';
+            }
             return $review;
         })->toArray();
 
@@ -245,18 +281,28 @@ class ReviewController extends Controller
     {
         $perPage = $request->integer('limit', 15);
         $search = $request->string('search');
+        $type = $request->string('type'); // product, store, or null = all
 
         $result = $this->reviewService->getPendingReviews(
             $request->integer('page', 1),
             $perPage,
-            $search ?: null
+            $search ?: null,
+            $type ?: null
         );
 
         // Map snake_case to camelCase for frontend
         $items = collect($result['items'])->map(function ($review) {
             $review->createdAt = $review->created_at;
-            $review->userName = $review->user?->first_name ? trim($review->user->first_name . ' ' . $review->user->last_name) : 'Customer';
-            $review->productName = $review->product?->name ?? '—';
+            // For store reviews, use name/email from the review record directly
+            if ($review->type === 'store') {
+                $review->userName = $review->name ?? 'Customer';
+                $review->userEmail = $review->email ?? '';
+                $review->productName = 'Store Review';
+            } else {
+                $review->userName = $review->user?->first_name ? trim($review->user->first_name . ' ' . $review->user->last_name) : 'Customer';
+                $review->userEmail = $review->user?->email ?? '';
+                $review->productName = $review->product?->name ?? '—';
+            }
             return $review;
         })->toArray();
 
@@ -275,7 +321,60 @@ class ReviewController extends Controller
     }
 
     /**
-     * Get approved reviews for the homepage
+     * Public endpoint for submitting store reviews (no auth required).
+     * POST /api/v1/reviews/store
+     */
+    public function storeStoreReview(Request $request): JsonResponse
+    {
+        try {
+            $validated = $request->validate([
+                'name' => 'required|string|max:255',
+                'email' => 'required|email|max:255',
+                'rating' => 'required|integer|min:1|max:5',
+                'comment' => 'required|string',
+                'images' => 'nullable|array',
+                'images.*' => 'nullable|string',
+                'title' => 'nullable|string|max:255',
+            ]);
+
+            $validated['type'] = 'store';
+            $review = $this->reviewService->createStoreReview($validated);
+
+            Cache::forget('reviews_homepage_data');
+
+            return response()->json(['success' => true, 'message' => 'Store review submitted', 'data' => $review], 201);
+        } catch (AppError $e) { return $e->render(); }
+    }
+
+    /**
+     * Get approved store reviews (reviews about the store, not a specific product).
+     * GET /api/v1/reviews/store
+     */
+    public function storeReviews(Request $request): JsonResponse
+    {
+        $page = $request->integer('page', 1);
+        $limit = $request->integer('limit', 15);
+
+        $reviews = \App\Models\Review::with(['user' => fn($q) => $q->select('id', 'first_name', 'last_name', 'email', 'avatar')])
+            ->where('type', 'store')
+            ->where('is_moderated', true)
+            ->where('is_flagged', false)
+            ->latest()
+            ->paginate($limit, ['*'], 'page', $page);
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'reviews' => $reviews->items(),
+                'pagination' => [
+                    'page' => $reviews->currentPage(),
+                    'limit' => $reviews->perPage(),
+                    'total' => $reviews->total(),
+                    'pages' => $reviews->lastPage(),
+                ],
+            ],
+        ]);
+    }
 
     /**
      * Upload a review image (authenticated users).

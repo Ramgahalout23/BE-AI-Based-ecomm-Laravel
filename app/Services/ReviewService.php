@@ -64,6 +64,41 @@ class ReviewService
     }
 
     /**
+     * Create a store review (no product association).
+     */
+    public function createStoreReview(array $data): array
+    {
+        if (empty($data['rating']) || $data['rating'] < 1 || $data['rating'] > 5) {
+            throw AppError::validation('Rating must be between 1 and 5');
+        }
+
+        if (empty($data['comment'])) {
+            throw AppError::validation('Review comment is required');
+        }
+
+        if (empty($data['name'])) {
+            throw AppError::validation('Name is required');
+        }
+
+        if (empty($data['email'])) {
+            throw AppError::validation('Email is required');
+        }
+
+        // Handle images array
+        if (isset($data['images']) && is_array($data['images'])) {
+            $data['images'] = array_values(array_filter($data['images'], fn($v) => !empty($v)));
+        }
+
+        $data['type'] = 'store';
+        $data['is_moderated'] = false;
+        $data['user_id'] = null;
+
+        $review = $this->reviewRepository->create($data);
+
+        return $review->toArray();
+    }
+
+    /**
      * Get reviews for a product with pagination.
      */
     public function getProductReviews(string $productId, int $page = 1, int $perPage = 10): array
@@ -197,12 +232,12 @@ class ReviewService
     /**
      * Get pending reviews for moderation (admin).
      */
-    public function getPendingReviews(int $page = 1, int $limit = 20, ?string $search = null): array
+    public function getPendingReviews(int $page = 1, int $limit = 20, ?string $search = null, ?string $type = null): array
     {
         if ($page < 1) throw AppError::validation('Page number must be at least 1');
         if ($limit < 1 || $limit > 50) throw AppError::validation('Limit must be between 1 and 50');
 
-        return $this->reviewRepository->getPendingModeration($page, $limit, $search);
+        return $this->reviewRepository->getPendingModeration($page, $limit, $search, $type);
     }
 
     /**

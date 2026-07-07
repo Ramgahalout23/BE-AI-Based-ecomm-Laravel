@@ -10,8 +10,9 @@ class Review extends Model
 {
     use HasUuids;
     protected $fillable = [
-        'product_id', 'user_id', 'order_id', 'rating', 'title', 'comment',
-        'images', 'is_verified', 'is_moderated', 'is_flagged', 'helpful', 'unhelpful'
+        'product_id', 'user_id', 'order_id', 'type', 'rating', 'title', 'comment',
+        'images', 'is_verified', 'is_moderated', 'is_flagged', 'helpful', 'unhelpful',
+        'name', 'email'
     ];
     protected $casts = [
         'images' => 'json', 'is_verified' => 'boolean', 'is_moderated' => 'boolean',

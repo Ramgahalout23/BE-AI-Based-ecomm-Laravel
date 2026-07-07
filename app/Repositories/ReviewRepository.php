@@ -194,17 +194,24 @@ class ReviewRepository extends BaseRepository
     /**
      * Get pending moderation reviews with search.
      */
-    public function getPendingModeration(int $page = 1, int $perPage = 20, ?string $search = null): array
+    public function getPendingModeration(int $page = 1, int $perPage = 20, ?string $search = null, ?string $type = null): array
     {
         $query = Review::with(['user' => fn($q) => $q->select('id', 'first_name', 'last_name', 'email', 'avatar')])
             ->with('product:id,name')
             ->where('is_moderated', false)
             ->where('is_flagged', false);
 
+        // Type filter
+        if ($type && in_array($type, ['product', 'store'])) {
+            $query->where('type', $type);
+        }
+
         if ($search) {
             $query->where(function ($q) use ($search) {
                 $q->where('title', 'like', "%{$search}%")
-                  ->orWhere('comment', 'like', "%{$search}%");
+                  ->orWhere('comment', 'like', "%{$search}%")
+                  ->orWhere('name', 'like', "%{$search}%")
+                  ->orWhere('email', 'like', "%{$search}%");
             });
         }
 

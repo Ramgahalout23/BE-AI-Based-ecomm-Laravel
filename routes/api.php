@@ -155,6 +155,8 @@ Route::prefix('v1')->group(function () {
 
     // Public Review Routes
     Route::get('/reviews/homepage', [ReviewController::class, 'homepage']);
+    Route::get('/reviews/store', [ReviewController::class, 'storeReviews']);
+    Route::post('/reviews/store', [ReviewController::class, 'storeStoreReview']);
     Route::get('/reviews/product/{productId}', [ReviewController::class, 'productReviews']);
     Route::get('/reviews/stats/{productId}', [ReviewController::class, 'stats']);
     Route::get('/reviews/verified/{productId}', [ReviewController::class, 'verifiedReviews']);
