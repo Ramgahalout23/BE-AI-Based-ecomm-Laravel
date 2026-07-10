@@ -68,6 +68,7 @@ class ReviewController extends Controller
             }
 
             Cache::forget('reviews_homepage_data');
+            Cache::forget('homepage_all');
             return response()->json(['success' => true, 'message' => 'Review submitted', 'data' => $review], 201);
         } catch (AppError $e) { return $e->render(); }
     }
@@ -83,6 +84,7 @@ class ReviewController extends Controller
             $validated = $request->validate(['rating' => 'sometimes|integer|min:1|max:5', 'comment' => 'nullable|string']);
             $review = $this->reviewService->update($id, Auth::id(), $validated);
             Cache::forget('reviews_homepage_data');
+            Cache::forget('homepage_all');
             return response()->json(['success' => true, 'message' => 'Review updated', 'data' => $review]);
         } catch (AppError $e) { return $e->render(); }
     }
@@ -92,6 +94,7 @@ class ReviewController extends Controller
         try {
             $this->reviewService->delete($id, Auth::id());
             Cache::forget('reviews_homepage_data');
+            Cache::forget('homepage_all');
             return response()->json(['success' => true, 'message' => 'Review deleted']);
         } catch (AppError $e) { return $e->render(); }
     }
@@ -102,6 +105,7 @@ class ReviewController extends Controller
             $validated = $request->validate(['status' => 'required|string|in:APPROVED,REJECTED,PENDING']);
             $review = $this->reviewService->moderate($id, $validated['status']);
             Cache::forget('reviews_homepage_data');
+            Cache::forget('homepage_all');
             return response()->json(['success' => true, 'message' => 'Review moderated', 'data' => $review]);
         } catch (AppError $e) { return $e->render(); }
     }
@@ -181,6 +185,35 @@ class ReviewController extends Controller
 
 
     /**
+     * Get single review details for admin.
+     * GET /api/v1/admin/reviews/{id}
+     */
+    public function adminShow(string $id): JsonResponse
+    {
+        try {
+            $review = \App\Models\Review::with([
+                'user' => fn($q) => $q->select('id', 'first_name', 'last_name', 'email', 'avatar'),
+                'product:id,name,slug'
+            ])->findOrFail($id);
+
+            $review->createdAt = $review->created_at;
+            if ($review->type === 'store') {
+                $review->userName = $review->name ?? 'Customer';
+                $review->userEmail = $review->email ?? '';
+                $review->productName = 'Store Review';
+            } else {
+                $review->userName = $review->user?->first_name ? trim($review->user->first_name . ' ' . $review->user->last_name) : 'Customer';
+                $review->userEmail = $review->user?->email ?? '';
+                $review->productName = $review->product?->name ?? '—';
+            }
+
+            return response()->json(['success' => true, 'data' => $review]);
+        } catch (\Exception $e) {
+            return response()->json(['success' => false, 'message' => 'Review not found'], 404);
+        }
+    }
+
+    /**
      * Get approved reviews for the homepage (across all products).
      * GET /api/v1/reviews/homepage
      */
@@ -256,6 +289,7 @@ class ReviewController extends Controller
         try {
             $review = $this->reviewService->moderate($id, 'APPROVED');
             Cache::forget('reviews_homepage_data');
+            Cache::forget('homepage_all');
             return response()->json(['success' => true, 'message' => 'Review approved', 'data' => $review]);
         } catch (AppError $e) { return $e->render(); }
     }
@@ -269,6 +303,7 @@ class ReviewController extends Controller
         try {
             $review = $this->reviewService->moderate($id, 'REJECTED');
             Cache::forget('reviews_homepage_data');
+            Cache::forget('homepage_all');
             return response()->json(['success' => true, 'message' => 'Review rejected', 'data' => $review]);
         } catch (AppError $e) { return $e->render(); }
     }
@@ -341,6 +376,7 @@ class ReviewController extends Controller
             $review = $this->reviewService->createStoreReview($validated);
 
             Cache::forget('reviews_homepage_data');
+            Cache::forget('homepage_all');
 
             return response()->json(['success' => true, 'message' => 'Store review submitted', 'data' => $review], 201);
         } catch (AppError $e) { return $e->render(); }

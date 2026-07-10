@@ -4,17 +4,19 @@ namespace App\Services;
 
 use App\Models\Language;
 use App\Models\Translation;
+use App\Traits\CacheKeyRegistry;
 use Illuminate\Support\Facades\Cache;
 
 class TranslationService
 {
+    use CacheKeyRegistry;
     /**
      * Get all translations for a language group.
      */
     public function getTranslations(string $languageCode, string $group = 'frontend'): array
     {
         $cacheKey = "translations_{$languageCode}_{$group}";
-        return Cache::remember($cacheKey, 3600, function () use ($languageCode, $group) {
+        return $this->cacheWithTracking($cacheKey, 3600, function () use ($languageCode, $group) {
             return Translation::where('language_code', $languageCode)
                 ->where('group', $group)
                 ->pluck('value', 'key')
@@ -27,7 +29,7 @@ class TranslationService
      */
     public function getLanguages(): array
     {
-        return Cache::remember('languages_active', 3600, function () {
+        return $this->cacheWithTracking('languages_active', 3600, function () {
             return Language::where('is_active', true)
                 ->select('code', 'name', 'native_name', 'is_default')
                 ->get()
@@ -40,7 +42,7 @@ class TranslationService
      */
     public function getDefaultLanguage(): string
     {
-        $default = Cache::remember('language_default', 3600, function () {
+        $default = $this->cacheWithTracking('language_default', 3600, function () {
             return Language::where('is_default', true)->first();
         });
         return $default ? $default->code : 'en';
@@ -65,7 +67,7 @@ class TranslationService
             ['value' => $value]
         );
 
-        Cache::forget("translations_{$languageCode}_{$group}");
+        $this->clearTrackedCache();
         return $translation;
     }
 
@@ -80,7 +82,7 @@ class TranslationService
                 ['value' => $value]
             );
         }
-        Cache::forget("translations_{$languageCode}_{$group}");
+        $this->clearTrackedCache();
     }
 
     /**
@@ -104,9 +106,7 @@ class TranslationService
                 ->update(['is_default' => false]);
         }
 
-        Cache::forget('languages_active');
-        Cache::forget('language_default');
-        Cache::forget('languages_admin');
+        $this->clearTrackedCache();
 
         return $lang;
     }
@@ -116,14 +116,12 @@ class TranslationService
         $lang = Language::findOrFail($id);
         Translation::where('language_code', $lang->code)->delete();
         $lang->delete();
-        Cache::forget('languages_active');
-        Cache::forget('language_default');
-        Cache::forget('languages_admin');
+        $this->clearTrackedCache();
     }
 
     public function getAllLanguagesAdmin(): array
     {
-        return Cache::remember('languages_admin', 3600, function () {
+        return $this->cacheWithTracking('languages_admin', 3600, function () {
             return Language::latest()
                 ->select('id', 'code', 'name', 'native_name', 'is_default', 'is_active')
                 ->get()

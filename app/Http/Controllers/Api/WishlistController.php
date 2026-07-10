@@ -91,10 +91,22 @@ class WishlistController extends Controller
      * Move product from wishlist to cart.
      * POST /api/v1/wishlist/{productId}/move-to-cart
      */
-    public function moveToCart(string $productId): JsonResponse
+    public function moveToCart(Request $request, string $productId): JsonResponse
     {
         try {
-            $result = $this->wishlistService->moveToCart(Auth::id(), $productId);
+            $validated = $request->validate([
+                'size' => 'nullable|string',
+                'color' => 'nullable|string',
+                'variantId' => 'nullable|string',
+            ]);
+
+            $result = $this->wishlistService->moveToCart(
+                Auth::id(),
+                $productId,
+                $validated['size'] ?? null,
+                $validated['color'] ?? null,
+                $validated['variantId'] ?? null
+            );
             return response()->json(['success' => true, 'message' => $result['message']]);
         } catch (AppError $e) { return $e->render(); }
     }

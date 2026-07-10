@@ -3,12 +3,15 @@
 namespace App\Services;
 
 use App\Models\CurrencyExchangeRate;
+use App\Traits\CacheKeyRegistry;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 class CurrencyService
 {
+    use CacheKeyRegistry;
+
     /**
      * Fetch live exchange rates from a free API (no API key required).
      * Tries Frankfurter (ECB data) first, falls back to ExchangeRate-API.
@@ -90,9 +93,7 @@ class CurrencyService
                 }
             }
 
-            // 6. Flush caches
-            Cache::forget('currencies_active');
-            Cache::forget('currency_default');
+            // 6. Flush caches        $this->clearTrackedCache();
 
         } catch (\Exception $e) {
             Log::error('Currency sync failed: ' . $e->getMessage());
@@ -152,7 +153,7 @@ class CurrencyService
      */
     public function getAllActive(): array
     {
-        return Cache::remember('currencies_active', 3600, function () {
+        return $this->cacheWithTracking('currencies_active', 3600, function () {
             return CurrencyExchangeRate::where('is_active', true)
                 ->select('code', 'name', 'symbol', 'exchange_rate', 'is_default')
                 ->get()
@@ -165,7 +166,7 @@ class CurrencyService
      */
     public function getDefault(): ?CurrencyExchangeRate
     {
-        return Cache::remember('currency_default', 3600, function () {
+        return $this->cacheWithTracking('currency_default', 3600, function () {
             return CurrencyExchangeRate::where('is_default', true)->first()
                 ?? CurrencyExchangeRate::first();
         });
@@ -190,7 +191,7 @@ class CurrencyService
      */
     public function getAll(): array
     {
-        return Cache::remember('currencies_admin', 600, function () {
+        return $this->cacheWithTracking('currencies_admin', 600, function () {
             return CurrencyExchangeRate::latest()
                 ->select('id', 'code', 'name', 'symbol', 'exchange_rate', 'last_synced_at', 'is_active', 'is_default')
                 ->get()
@@ -220,9 +221,7 @@ class CurrencyService
                 ->update(['is_default' => false]);
         }
 
-        Cache::forget('currencies_active');
-        Cache::forget('currency_default');
-        Cache::forget('currencies_admin');
+        $this->clearTrackedCache();
 
         return $currency;
     }
@@ -234,8 +233,6 @@ class CurrencyService
     {
         $currency = CurrencyExchangeRate::findOrFail($id);
         $currency->delete();
-        Cache::forget('currencies_active');
-        Cache::forget('currency_default');
-        Cache::forget('currencies_admin');
+        $this->clearTrackedCache();
     }
 }

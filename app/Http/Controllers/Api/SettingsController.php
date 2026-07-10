@@ -13,12 +13,25 @@ class SettingsController extends Controller
     public function __construct(protected SettingsService $settingsService) {}
 
     /**
-     * Flush the app-init cache so that setting changes are reflected immediately
-     * without waiting for the 300s TTL to expire.
+     * Flush caches affected by setting changes so they are reflected immediately
+     * without waiting for their TTLs to expire.
+     *
+     * Flushes:
+     * - 'app_init' — the app initialization data (layout, nav, etc.)
+     * - 'setting_*' — feature toggle caches (curated looks, reels, reviews, best sellers)
      */
     private function flushAppInitCache(): void
     {
         \Illuminate\Support\Facades\Cache::forget('app_init');
+        \Illuminate\Support\Facades\Cache::forget('setting_curatedLooksEnabled');
+        \Illuminate\Support\Facades\Cache::forget('setting_reelsEnabled');
+        \Illuminate\Support\Facades\Cache::forget('setting_reviewsEnabled');
+        \Illuminate\Support\Facades\Cache::forget('setting_bestSellersEnabled');
+        \Illuminate\Support\Facades\Cache::forget('email_enabled');
+        \Illuminate\Support\Facades\Cache::forget('smtp_settings');
+        \Illuminate\Support\Facades\Cache::forget('store_name');
+        \Illuminate\Support\Facades\Cache::forget('sms_enabled');
+        \Illuminate\Support\Facades\Cache::forget('homepage_all');
     }
 
     public function index(): JsonResponse

@@ -7,11 +7,14 @@ use App\Exceptions\AppError;
 use App\Models\Coupon;
 use App\Models\CouponUsage;
 use App\Models\CouponAnalytics;
+use App\Traits\CacheKeyRegistry;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 
 class CouponService
 {
+    use CacheKeyRegistry;
+
     public function __construct(
         protected CouponRepository $couponRepository
     ) {}
@@ -32,8 +35,7 @@ class CouponService
         }
 
         $result = $this->couponRepository->create($data)->toArray();
-        Cache::forget('coupons_public');
-        Cache::forget('coupons_auto_apply');
+        $this->clearTrackedCache();
         return $result;
     }
 
@@ -57,16 +59,15 @@ class CouponService
             }
         }
 
-        $total = $query->count();
-        $data = $query->latest()->skip(($page - 1) * $limit)->take($limit)->get();
+        $paginator = $query->latest()->paginate($limit, ['*'], 'page', $page);
 
         return [
-            'data' => $data->toArray(),
+            'data' => $paginator->items(),
             'pagination' => [
-                'total' => $total,
-                'page' => $page,
-                'limit' => $limit,
-                'pages' => (int) ceil($total / $limit),
+                'total' => $paginator->total(),
+                'page' => $paginator->currentPage(),
+                'limit' => $paginator->perPage(),
+                'pages' => $paginator->lastPage(),
             ],
         ];
     }
@@ -93,7 +94,7 @@ class CouponService
      */
     public function getPublicCoupons(): array
     {
-        return Cache::remember('coupons_public', 3600, function () {
+        return $this->cacheWithTracking('coupons_public', 3600, function () {
             $nonMonetaryTypes = Coupon::NON_MONETARY_TYPES;
 
             return Coupon::select('id', 'code', 'type', 'discount_type', 'discount_value', 'min_order_value', 'max_discount', 'description', 'is_auto_apply', 'start_date', 'expiry_date', 'usage_count', 'usage_limit', 'usage_per_user', 'is_new_user_only', 'is_stackable')
@@ -131,8 +132,7 @@ class CouponService
         }
 
         $result = $this->couponRepository->update($id, $data)->toArray();
-        Cache::forget('coupons_public');
-        Cache::forget('coupons_auto_apply');
+        $this->clearTrackedCache();
         return $result;
     }
 
@@ -140,8 +140,7 @@ class CouponService
     {
         $this->couponRepository->findByIdOrFail($id);
         $this->couponRepository->delete($id);
-        Cache::forget('coupons_public');
-        Cache::forget('coupons_auto_apply');
+        $this->clearTrackedCache();
     }
 
     /**
@@ -273,6 +272,9 @@ class CouponService
         $analytics->increment('usage_count');
         $analytics->increment('total_discount_given', $validation['discount_amount']);
 
+        // Clear cached coupon lists so updated usage counts are reflected immediately
+        $this->clearTrackedCache();
+
         return [
             'coupon_id' => $coupon->id,
             'code' => $coupon->code,
@@ -313,7 +315,7 @@ class CouponService
      */
     public function getAutoApplyCoupons(): array
     {
-        return Cache::remember('coupons_auto_apply', 3600, function () {
+        return $this->cacheWithTracking('coupons_auto_apply', 3600, function () {
             return Coupon::select('id', 'code', 'type', 'discount_type', 'discount_value', 'min_order_value', 'max_discount', 'description', 'start_date', 'expiry_date', 'usage_count', 'usage_limit', 'usage_per_user', 'is_new_user_only', 'is_stackable')
                 ->where('is_active', true)
                 ->where('is_auto_apply', true)

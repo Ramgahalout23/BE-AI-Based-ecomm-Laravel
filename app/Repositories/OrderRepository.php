@@ -26,13 +26,16 @@ class OrderRepository extends BaseRepository
             ])
             ->with([
                 'items' => function ($q) {
-                    $q->select('id', 'order_id', 'product_id', 'variant_id', 'quantity', 'price', 'total', 'created_at');
+                    $q->select('id', 'order_id', 'product_id', 'variant_id', 'quantity', 'price', 'total', 'item_index', 'created_at');
                 },
                 'items.product' => function ($q) {
                     $q->select('id', 'name', 'created_at');
                 },
                 'items.product.images' => function ($q) {
                     $q->select('id', 'product_id', 'url');
+                },
+                'items.variant' => function ($q) {
+                    $q->select('id', 'name', 'attributes');
                 },
                 'user' => function ($q) {
                     $q->select(['id', 'first_name', 'last_name', 'email', 'phone_number', 'created_at']);
@@ -49,6 +52,9 @@ class OrderRepository extends BaseRepository
                 'billingAddress' => function ($q) {
                     $q->select('id', 'first_name', 'last_name', 'phone_number', 'address_line1', 'address_line2', 'city', 'state', 'zip_code', 'country', 'is_default');
                 },
+                'customDesigns' => function ($q) {
+                    $q->select('id', 'order_id', 'item_index', 'design_file_url', 'design_notes', 'placement', 'color', 'size', 'design_filename');
+                },
             ])
             ->find($id);
     }
@@ -64,13 +70,16 @@ class OrderRepository extends BaseRepository
             ])
             ->with([
                 'items' => function ($q) {
-                    $q->select('id', 'order_id', 'product_id', 'variant_id', 'quantity', 'price', 'total', 'created_at');
+                    $q->select('id', 'order_id', 'product_id', 'variant_id', 'quantity', 'price', 'total', 'item_index', 'created_at');
                 },
                 'items.product' => function ($q) {
                     $q->select('id', 'name', 'created_at');
                 },
                 'items.product.images' => function ($q) {
                     $q->select('id', 'product_id', 'url');
+                },
+                'items.variant' => function ($q) {
+                    $q->select('id', 'name', 'attributes');
                 },
                 'user' => function ($q) {
                     $q->select(['id', 'first_name', 'last_name', 'email', 'phone_number', 'created_at']);
@@ -91,13 +100,16 @@ class OrderRepository extends BaseRepository
         $query = Order::select('id', 'order_number', 'status', 'total', 'created_at')
             ->with([
                 'items' => function ($q) {
-                    $q->select('id', 'order_id', 'product_id', 'quantity', 'price', 'total');
+                    $q->select('id', 'order_id', 'product_id', 'variant_id', 'quantity', 'price', 'total', 'item_index', 'created_at');
                 },
                 'items.product' => function ($q) {
                     $q->select('id', 'name');
                 },
                 'items.product.images' => function ($q) {
                     $q->select('id', 'product_id', 'url');
+                },
+                'items.variant' => function ($q) {
+                    $q->select('id', 'name', 'attributes');
                 },
             ])
             ->where('user_id', $userId);
@@ -118,13 +130,16 @@ class OrderRepository extends BaseRepository
                     $q->select(['id', 'first_name', 'last_name', 'email']);
                 },
                 'items' => function ($q) {
-                    $q->select('id', 'order_id', 'product_id', 'quantity', 'price', 'total');
+                    $q->select('id', 'order_id', 'product_id', 'variant_id', 'quantity', 'price', 'total', 'item_index', 'created_at');
                 },
                 'items.product' => function ($q) {
                     $q->select('id', 'name');
                 },
                 'items.product.images' => function ($q) {
                     $q->select('id', 'product_id', 'url');
+                },
+                'items.variant' => function ($q) {
+                    $q->select('id', 'name', 'attributes');
                 },
             ]);
 

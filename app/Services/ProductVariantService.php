@@ -4,17 +4,20 @@ namespace App\Services;
 
 use App\Repositories\ProductVariantRepository;
 use App\Exceptions\AppError;
+use App\Traits\CacheKeyRegistry;
 use Illuminate\Support\Facades\Cache;
 
 class ProductVariantService
 {
+    use CacheKeyRegistry;
+
     public function __construct(
         protected ProductVariantRepository $variantRepository
     ) {}
 
     public function getByProduct(string $productId): array
     {
-        return Cache::remember("product_variants_{$productId}", 3600, function () use ($productId) {
+        return $this->cacheWithTracking("product_variants_{$productId}", 3600, function () use ($productId) {
             return $this->variantRepository->findByProduct($productId)->toArray();
         });
     }
@@ -30,7 +33,7 @@ class ProductVariantService
     {
         $data['product_id'] = $productId;
         $variant = $this->variantRepository->create($data);
-        Cache::forget("product_variants_{$productId}");
+        $this->clearTrackedCache();
         return $variant->toArray();
     }
 
@@ -38,7 +41,7 @@ class ProductVariantService
     {
         $variant = $this->variantRepository->findByIdOrFail($id);
         $result = $this->variantRepository->update($id, $data)->toArray();
-        Cache::forget("product_variants_{$variant->product_id}");
+        $this->clearTrackedCache();
         return $result;
     }
 
@@ -46,7 +49,7 @@ class ProductVariantService
     {
         $variant = $this->variantRepository->findByIdOrFail($id);
         $this->variantRepository->delete($id);
-        Cache::forget("product_variants_{$variant->product_id}");
+        $this->clearTrackedCache();
     }
 
     public function getLowStock(int $threshold = 5): array

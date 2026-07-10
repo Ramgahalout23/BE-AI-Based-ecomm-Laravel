@@ -6,13 +6,22 @@ use App\Http\Controllers\Controller;
 use App\Services\CheckoutService;
 use App\Exceptions\AppError;
 use App\Models\Address;
+use App\Models\CustomDesign;
 use App\Models\Product;
+use App\Models\ProductVariant;
 use App\Models\User;
+use App\Services\OrderService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Str;
+/**
+ * UUID for the Custom T-Shirt product — must match the product created
+ * in the 2026_07_08_000010_create_custom_tee_product migration.
+ */
+const CUSTOM_TEE_PRODUCT_ID = 'c5b8e3f0-3a1c-4b7e-9d6f-1a2b3c4d5e6f';
 
 class CheckoutController extends Controller
 {
@@ -64,6 +73,17 @@ class CheckoutController extends Controller
                 'items' => 'required|array|min:1',
                 'items.*.productId' => 'required|string',
                 'items.*.quantity' => 'required|integer|min:1',
+                'items.*.price' => 'nullable|numeric|min:0',
+                'items.*.isCustom' => 'nullable|boolean',
+                'items.*.customDesign' => 'nullable|array',
+                'items.*.customDesign.designFile' => 'nullable|string',
+                'items.*.customDesign.designNotes' => 'nullable|string',
+                'items.*.customDesign.placement' => 'nullable|string',
+                'items.*.customDesign.color' => 'nullable|array',
+                'items.*.customDesign.color.name' => 'nullable|string',
+                'items.*.customDesign.color.hex' => 'nullable|string',
+                'items.*.customDesign.serverUrl' => 'nullable|string',
+                'items.*.customDesign.path' => 'nullable|string',
 
                 'shippingAddress.firstName' => 'required|string|max:255',
                 'shippingAddress.lastName' => 'required|string|max:255',
@@ -90,12 +110,10 @@ class CheckoutController extends Controller
             $validated = $request->validate($rules);
 
             // ── Resolve or create a user (guests get an on-the-fly account) ──
-            $accountCreated = false;
             if ($isGuest) {
                 $result = $this->resolveGuestUser($validated);
                 $user = $result['user'];
-                $accountCreated = $result['created'];
-                // Login the guest user so Auth::id() works downstream in OrderController::store
+                // Login the guest user so Auth::id() works downstream
                 Auth::login($user);
             }
 
@@ -115,28 +133,59 @@ class CheckoutController extends Controller
                 'country' => $sa['country'] ?? 'India',
             ]);
 
-            // ── Build order items from request, look up prices from DB ──
-            // Batch-load all products in a single query to avoid N+1
-            $productIds = array_column($validated['items'], 'productId');
-            $products = Product::whereIn('id', $productIds)->get()->keyBy('id');
+            // ── Build order items from request ──
+            // Separate real products (look up from DB) and custom items (use submitted price)
+            $customItemKeys = [];
+            $realProductIds = [];
+            foreach ($validated['items'] as $idx => $item) {
+                if (!empty($item['isCustom']) || $item['productId'] === CUSTOM_TEE_PRODUCT_ID) {
+                    $customItemKeys[] = $idx;
+                } else {
+                    $realProductIds[] = $item['productId'];
+                }
+            }
+
+            // ── Pre-load real products AND variants in a single query each to avoid N+1 ──
+            // Products are used for price validation; variants for stock checking
+            // Both are passed into createOrder() to eliminate redundant DB queries
+            $preloadedProducts = Product::whereIn('id', $realProductIds)->get()->keyBy('id');
+            $preloadedVariants = !empty($realProductIds)
+                ? ProductVariant::whereIn('product_id', $realProductIds)
+                    ->orderBy('quantity', 'desc')
+                    ->get()
+                    ->groupBy('product_id')
+                : collect();
 
             $orderItems = [];
             $subtotal = 0;
-            foreach ($validated['items'] as $item) {
-                $product = $products->get($item['productId']);
-                if (!$product) {
-                    return response()->json([
-                        'success' => false,
-                        'message' => "Product '{$item['productId']}' not found",
-                    ], 422);
+            foreach ($validated['items'] as $idx => $item) {
+                if (in_array($idx, $customItemKeys)) {
+                    // Custom T-Shirt: use the price submitted from the frontend
+                    // (the frontend computes BASE_PRICE + CUSTOM_DESIGN_FEE)
+                    $price = (float) ($item['price'] ?? 699);
+                    $orderItems[] = [
+                        'product_id' => CUSTOM_TEE_PRODUCT_ID,
+                        'quantity' => (int) $item['quantity'],
+                        'price' => $price,
+                    ];
+                    $subtotal += $price * (int) $item['quantity'];
+                } else {
+                    // Real product: look up from database to prevent price tampering
+                    $product = $preloadedProducts->get($item['productId']);
+                    if (!$product) {
+                        return response()->json([
+                            'success' => false,
+                            'message' => "Product '{$item['productId']}' not found",
+                        ], 422);
+                    }
+                    $price = (float) $product->price;
+                    $orderItems[] = [
+                        'product_id' => $product->id,
+                        'quantity' => (int) $item['quantity'],
+                        'price' => $price,
+                    ];
+                    $subtotal += $price * (int) $item['quantity'];
                 }
-                $price = (float) $product->price;
-                $orderItems[] = [
-                    'product_id' => $product->id,
-                    'quantity' => (int) $item['quantity'],
-                    'price' => $price,
-                ];
-                $subtotal += $price * (int) $item['quantity'];
             }
             $shippingCost = $subtotal >= 499 ? 0 : 50;
 
@@ -144,29 +193,109 @@ class CheckoutController extends Controller
             $flashSaleResult = $this->flashSaleService->getApplicableDiscounts($orderItems);
             $discount = $flashSaleResult['total_discount'];
 
-            // ── Create the order via OrderController's store logic ──
-            $orderRequest = new Request([
+            // ── Create the order directly via OrderService (bypass OrderController::store) ──
+            $orderService = app(OrderService::class);
+            $orderArray = $orderService->createOrder($user->id, [
                 'shipping_address_id' => $address->id,
                 'items' => $orderItems,
                 'shipping_cost' => $shippingCost,
                 'discount' => $discount,
                 'payment_method' => $validated['paymentMethod'] ?? null,
                 'notes' => $validated['notes'] ?? null,
-            ]);
+            ], $preloadedProducts, $preloadedVariants);
 
-            $orderController = app(OrderController::class);
-            $orderResponse = $orderController->store($orderRequest);
+            $createdOrderId = $orderArray['id'] ?? null;
+
+            // ── Create CustomDesign records directly (bypass CustomDesignController::store) ──
+            if ($createdOrderId && !empty($customItemKeys)) {
+                $itemsFromResponse = $orderArray['items'] ?? [];
+
+                foreach ($customItemKeys as $itemIndex) {
+                    $item = $validated['items'][$itemIndex];
+                    $customDesign = $item['customDesign'] ?? [];
+
+                    // Map the item index to the actual order_item UUID for a reliable FK relationship
+                    $orderItemId = $itemsFromResponse[$itemIndex]['id'] ?? null;
+
+                    // Store back design URL in design_notes as JSON if placement is 'both'
+                    $backDesignUrl = $customDesign['backServerUrl'] ?? $customDesign['backUrl'] ?? null;
+                    $backDesignPath = $customDesign['backPath'] ?? null;
+                    $notes = $customDesign['designNotes'] ?? null;
+                    $placement = $customDesign['placement'] ?? null;
+
+                    if ($placement === 'both' && $backDesignUrl) {
+                        $designNotesPayload = json_encode([
+                            'text' => $notes,
+                            'backDesignUrl' => $backDesignUrl,
+                            'backDesignPath' => $backDesignPath,
+                        ]);
+                    } else {
+                        $designNotesPayload = $notes;
+                    }
+
+                    CustomDesign::create([
+                        'order_id' => $createdOrderId,
+                        'item_index' => $itemIndex,
+                        'order_item_id' => $orderItemId,
+                        'design_file_url' => $customDesign['serverUrl'] ?? null,
+                        'design_file_path' => $customDesign['path'] ?? null,
+                        'design_filename' => $customDesign['designFile'] ?? null,
+                        'color' => $customDesign['color']['name'] ?? $item['color'] ?? null,
+                        'size' => $item['size'] ?? null,
+                        'quantity' => (int) $item['quantity'],
+                        'placement' => $placement ?? 'Front',
+                        'price' => (float) ($item['price'] ?? 699),
+                        'design_notes' => $designNotesPayload,
+                        'user_id' => $user->id,
+                        'customer_name' => trim(($user->first_name ?? '') . ' ' . ($user->last_name ?? '')) ?: 'Guest',
+                        'customer_email' => $user->email ?? '',
+                        'status' => 'PENDING_REVIEW',
+                    ]);
+                }
+
+                // Reload custom designs from DB and inject into the order array + update cache
+                $customDesigns = CustomDesign::where('order_id', $createdOrderId)
+                    ->get()
+                    ->keyBy('item_index');
+
+                if (isset($orderArray['items']) && is_array($orderArray['items'])) {
+                    foreach ($orderArray['items'] as &$itemRef) {
+                        $idx = $itemRef['item_index'] ?? null;
+                        if ($idx !== null && $customDesigns->has($idx)) {
+                            $cd = $customDesigns->get($idx);
+                            $itemRef['customDesign'] = [
+                                'design_file_url' => $cd->design_file_url,
+                                'design_notes' => $cd->design_notes,
+                                'placement' => $cd->placement,
+                                'color' => $cd->color,
+                                'size' => $cd->size,
+                                'design_filename' => $cd->design_filename,
+                            ];
+                            if ($cd->design_file_url) {
+                                $itemRef['image'] = $cd->design_file_url;
+                            }
+                        }
+                    }
+                    unset($itemRef);
+                }
+
+                // Update the cached order data to include custom designs
+                Cache::put('order_' . $createdOrderId, $orderArray, now()->addMinutes(3));
+            }
+
+            // ── Build the JSON response ──
+            $response = response()->json([
+                'success' => true,
+                'message' => 'Order created',
+                'data' => $orderArray,
+            ], 201);
 
             // ── Always return a Sanctum token for guest checkout users ──
-            // This allows the thank-you page to authenticate and fetch order details.
-            // The `accountCreated` flag is only set to true if the user explicitly opted in.
-            // Always generate a token, even when an existing user is reused (same email),
-            // since the guest isn't authenticated in the current browser session.
             if ($isGuest) {
                 $token = $user->createToken('checkout-token');
                 $plainTextToken = $token->plainTextToken;
 
-                $responseData = $orderResponse->getData();
+                $responseData = $response->getData();
                 if (isset($responseData->data)) {
                     $responseData->data->accountCreated = !empty($validated['createAccount']);
                     $responseData->data->tokens = [
@@ -177,10 +306,10 @@ class CheckoutController extends Controller
                         $responseData->data->user = $user->toArray();
                     }
                 }
-                $orderResponse->setData($responseData);
+                $response->setData($responseData);
             }
 
-            return $orderResponse;
+            return $response;
         } catch (AppError $e) {
             return $e->render();
         }

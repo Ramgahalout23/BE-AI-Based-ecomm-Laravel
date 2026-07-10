@@ -32,18 +32,14 @@ class MarketingRepository
             });
         }
 
-        $total = $query->count();
-        $items = $query->latest()
-            ->skip(($page - 1) * $limit)
-            ->take($limit)
-            ->get();
+        $paginator = $query->latest()->paginate($limit, ['*'], 'page', $page);
 
         return [
-            'items' => $items->toArray(),
-            'page' => $page,
-            'limit' => $limit,
-            'total' => $total,
-            'total_pages' => (int) ceil($total / $limit),
+            'items' => $paginator->items(),
+            'page' => $paginator->currentPage(),
+            'limit' => $paginator->perPage(),
+            'total' => $paginator->total(),
+            'total_pages' => $paginator->lastPage(),
         ];
     }
 
@@ -141,18 +137,14 @@ class MarketingRepository
             });
         }
 
-        $total = $query->count();
-        $items = $query->latest()
-            ->skip(($page - 1) * $limit)
-            ->take($limit)
-            ->get();
+        $paginator = $query->latest()->paginate($limit, ['*'], 'page', $page);
 
         return [
-            'items' => $items->toArray(),
-            'page' => $page,
-            'limit' => $limit,
-            'total' => $total,
-            'total_pages' => (int) ceil($total / $limit),
+            'items' => $paginator->items(),
+            'page' => $paginator->currentPage(),
+            'limit' => $paginator->perPage(),
+            'total' => $paginator->total(),
+            'total_pages' => $paginator->lastPage(),
         ];
     }
 
@@ -219,19 +211,14 @@ class MarketingRepository
         $query = CampaignRecipient::with(['subscriber' => fn($q) => $q->select('id', 'email', 'name')])
             ->where('campaign_id', $campaignId);
 
-        $total = $query->count();
-        $items = $query->latest()
-            ->skip(($page - 1) * $limit)
-            ->take($limit)
-            ->get()
-            ->toArray();
+        $paginator = $query->latest()->paginate($limit, ['*'], 'page', $page);
 
         return [
-            'items' => $items,
-            'page' => $page,
-            'limit' => $limit,
-            'total' => $total,
-            'total_pages' => (int) ceil($total / $limit),
+            'items' => $paginator->items(),
+            'page' => $paginator->currentPage(),
+            'limit' => $paginator->perPage(),
+            'total' => $paginator->total(),
+            'total_pages' => $paginator->lastPage(),
         ];
     }
 
@@ -308,20 +295,16 @@ class MarketingRepository
             });
         }
 
-        $total = $query->count();
-        $items = $query->select('id', 'name', 'email', 'phone')
+        $paginator = $query->select('id', 'name', 'email', 'phone')
             ->latest()
-            ->skip(($page - 1) * $limit)
-            ->take($limit)
-            ->get()
-            ->toArray();
+            ->paginate($limit, ['*'], 'page', $page);
 
         return [
-            'items' => $items,
-            'page' => $page,
-            'limit' => $limit,
-            'total' => $total,
-            'total_pages' => (int) ceil($total / $limit),
+            'items' => $paginator->items(),
+            'page' => $paginator->currentPage(),
+            'limit' => $paginator->perPage(),
+            'total' => $paginator->total(),
+            'total_pages' => $paginator->lastPage(),
         ];
     }
 }

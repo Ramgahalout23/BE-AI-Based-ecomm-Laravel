@@ -3,11 +3,13 @@
 namespace App\Repositories;
 
 use App\Models\Category;
+use App\Traits\CacheKeyRegistry;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Cache;
 
 class CategoryRepository extends BaseRepository
 {
+    use CacheKeyRegistry;
     protected function modelClass(): string
     {
         return Category::class;
@@ -29,7 +31,7 @@ class CategoryRepository extends BaseRepository
 
     public function getHierarchy(): Collection
     {
-        return Cache::remember('categories_hierarchy', 3600, function () {
+        return $this->cacheWithTracking('categories_hierarchy', 3600, function () {
             return Category::with('children')
                 ->whereNull('parent_id')
                 ->orderBy('name')
@@ -39,7 +41,7 @@ class CategoryRepository extends BaseRepository
 
     public function getActive(): Collection
     {
-        return Cache::remember('categories_active', 3600, function () {
+        return $this->cacheWithTracking('categories_active', 3600, function () {
             return Category::where('is_active', true)
                 ->withCount('products')
                 ->orderBy('name')
@@ -65,7 +67,7 @@ class CategoryRepository extends BaseRepository
 
     public function getTree(): Collection
     {
-        return Cache::remember('categories_tree', 3600, function () {
+        return $this->cacheWithTracking('categories_tree', 3600, function () {
             return Category::withCount('products')
                 ->orderBy('name')
                 ->get();
@@ -77,9 +79,6 @@ class CategoryRepository extends BaseRepository
      */
     public function clearCache(): void
     {
-        Cache::forget('categories_hierarchy');
-        Cache::forget('categories_active');
-        Cache::forget('categories_tree');
-        Cache::forget('categories_all');
+        $this->clearTrackedCache();
     }
 }

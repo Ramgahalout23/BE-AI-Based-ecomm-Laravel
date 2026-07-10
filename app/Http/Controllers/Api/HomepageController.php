@@ -11,11 +11,13 @@ use App\Models\Setting;
 use App\Models\Banner;
 use App\Models\Category;
 use App\Models\Promotion;
+use App\Traits\CacheKeyRegistry;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Cache;
 
 class HomepageController extends Controller
 {
+    use CacheKeyRegistry;
     /**
      * Snake-to-camelCase mapping for banner fields.
      * The frontend HeroBanner component expects camelCase keys.
@@ -164,7 +166,7 @@ class HomepageController extends Controller
      */
     public function __invoke(): JsonResponse
     {
-        $data = Cache::remember('homepage_all', 300, function () {
+        $data = $this->cacheWithTracking('homepage_all', 300, function () {
 
             // Each section is wrapped in try/catch so a failure in one area
             // doesn't crash the entire homepage.

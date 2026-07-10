@@ -57,19 +57,14 @@ class PaymentRepository extends BaseRepository
             $q->select('id', 'order_number', 'total');
         }]);
 
-        $total = $query->count();
-
-        $items = $query->latest()
-            ->skip(($page - 1) * $limit)
-            ->take($limit)
-            ->get();
+        $paginator = $query->latest()->paginate($limit, ['*'], 'page', $page);
 
         return [
-            'items' => $items,
-            'page' => $page,
-            'limit' => $limit,
-            'total' => $total,
-            'total_pages' => (int) ceil($total / $limit),
+            'items' => $paginator->items(),
+            'page' => $paginator->currentPage(),
+            'limit' => $paginator->perPage(),
+            'total' => $paginator->total(),
+            'total_pages' => $paginator->lastPage(),
         ];
     }
 
@@ -118,19 +113,14 @@ class PaymentRepository extends BaseRepository
             $query->where('status', $status);
         }
 
-        $total = $query->count();
-
-        $items = $query->latest()
-            ->skip(($page - 1) * $limit)
-            ->take($limit)
-            ->get();
+        $paginator = $query->latest()->paginate($limit, ['*'], 'page', $page);
 
         return [
-            'items' => $items,
-            'page' => $page,
-            'limit' => $limit,
-            'total' => $total,
-            'total_pages' => (int) ceil($total / $limit),
+            'items' => $paginator->items(),
+            'page' => $paginator->currentPage(),
+            'limit' => $paginator->perPage(),
+            'total' => $paginator->total(),
+            'total_pages' => $paginator->lastPage(),
         ];
     }
 

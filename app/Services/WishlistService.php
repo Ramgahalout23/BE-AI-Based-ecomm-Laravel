@@ -113,16 +113,16 @@ class WishlistService
         return ['message' => 'Wishlist cleared', 'count' => $count];
     }
 
-    public function moveToCart(string $userId, string $productId): array
+    public function moveToCart(string $userId, string $productId, ?string $size = null, ?string $color = null, ?string $variantId = null): array
     {
         if (empty($productId)) throw AppError::validation('Product ID is required');
 
         $item = $this->wishlistRepository->findByUserAndProduct($userId, $productId);
         if (!$item) throw AppError::notFound('Product not in wishlist');
 
-        // Add to cart
+        // Add to cart with variant info
         $cartService = app(CartService::class);
-        $cartService->addItem($productId, 1, $userId);
+        $cartService->addItem($productId, 1, $userId, null, $size, $color, $variantId);
 
         // Remove from wishlist
         $this->wishlistRepository->removeByUserAndProduct($userId, $productId);

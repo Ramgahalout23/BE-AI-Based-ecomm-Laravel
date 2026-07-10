@@ -24,6 +24,7 @@ Route::patch('/staff/{id}', [UserManagementController::class, 'staffUpdate']);
 // ── Reviews ──
 Route::get('/reviews', [ReviewController::class, 'adminIndex']);
 Route::get('/reviews/pending', [ReviewController::class, 'pendingReviews']);
+Route::get('/reviews/{id}', [ReviewController::class, 'adminShow']);
 Route::post('/reviews/{id}/moderate', [ReviewController::class, 'moderate']);
 Route::post('/reviews/{id}/approve', [ReviewController::class, 'approve']);
 Route::post('/reviews/{id}/reject', [ReviewController::class, 'reject']);

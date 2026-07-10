@@ -5,18 +5,21 @@ namespace App\Services;
 use App\Repositories\CategoryRepository;
 use App\Exceptions\AppError;
 use App\Models\Category;
+use App\Traits\CacheKeyRegistry;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 
 class CategoryService
 {
+    use CacheKeyRegistry;
+
     public function __construct(
         protected CategoryRepository $categoryRepository
     ) {}
 
     public function getAll(): array
     {
-        return Cache::remember('categories_all', 3600, function () {
+        return $this->cacheWithTracking('categories_all', 3600, function () {
             return $this->categoryRepository->all()->toArray();
         });
     }
@@ -26,10 +29,7 @@ class CategoryService
      */
     private function clearCache(?string $categoryId = null): void
     {
-        if ($categoryId) {
-            Cache::forget("category_subcategories_{$categoryId}");
-            Cache::forget("category_stats_{$categoryId}");
-        }
+        $this->clearTrackedCache();
         $this->categoryRepository->clearCache();
     }
 
@@ -58,7 +58,7 @@ class CategoryService
 
     public function getSubcategories(string $categoryId): array
     {
-        return Cache::remember("category_subcategories_{$categoryId}", 3600, function () use ($categoryId) {
+        return $this->cacheWithTracking("category_subcategories_{$categoryId}", 3600, function () use ($categoryId) {
             $category = Category::with(['children' => function ($q) {
                 $q->withCount('products');
             }])->withCount('products')->find($categoryId);
@@ -72,7 +72,7 @@ class CategoryService
 
     public function getCategoryStats(string $categoryId): array
     {
-        return Cache::remember("category_stats_{$categoryId}", 3600, function () use ($categoryId) {
+        return $this->cacheWithTracking("category_stats_{$categoryId}", 3600, function () use ($categoryId) {
             $category = Category::withCount('products')
                 ->with(['children' => function ($q) {
                     $q->withCount('products');

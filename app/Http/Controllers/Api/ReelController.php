@@ -5,12 +5,14 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Reel;
 use App\Models\Setting;
+use App\Traits\CacheKeyRegistry;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 
 class ReelController extends Controller
 {
+    use CacheKeyRegistry;
     /**
      * Public: List all active reels for homepage display.
      * GET /api/v1/reels
@@ -18,7 +20,7 @@ class ReelController extends Controller
     public function index(): JsonResponse
     {
         // Master toggle: check if reels section is enabled (cached 5 min)
-        $reelsEnabled = Cache::remember('setting_reelsEnabled', 300, function () {
+        $reelsEnabled = $this->cacheWithTracking('setting_reelsEnabled', 300, function () {
             return Setting::where('key', 'reelsEnabled')->value('value');
         });
 
@@ -30,7 +32,7 @@ class ReelController extends Controller
         }
 
         // Cache entire response data for 5 minutes — reels change infrequently
-        $data = Cache::remember('reels_data', 300, function () {
+        $data = $this->cacheWithTracking('reels_data', 300, function () {
             return Reel::where('is_active', true)
                 ->with(['products' => function ($q) {
                     $q->select('products.id', 'products.name', 'products.slug', 'products.price', 'products.old_price', 'products.rating', 'products.review_count', 'products.badge');
@@ -103,7 +105,7 @@ class ReelController extends Controller
 
         $cacheKey = 'reels_admin:v' . $version . ':p' . $page . ':pp' . $perPage . ':s' . md5($search) . ':a' . $isActiveFilter;
 
-        return Cache::remember($cacheKey, 300, function () use ($page, $perPage, $search, $isActiveFilter) {
+        return $this->cacheWithTracking($cacheKey, 300, function () use ($page, $perPage, $search, $isActiveFilter) {
             $query = Reel::select('id', 'title', 'description', 'video_url', 'image_url', 'link_url', 'display_order', 'is_active', 'created_at')
                 ->orderBy('display_order')
                 ->orderBy('created_at', 'desc');
@@ -171,7 +173,7 @@ class ReelController extends Controller
 
         $reel->load('products');
 
-        Cache::forget('reels_data');
+        $this->clearTrackedCache();
         $this->bumpAdminCacheVersion();
 
         return response()->json([
@@ -213,7 +215,7 @@ class ReelController extends Controller
 
         $reel->load('products');
 
-        Cache::forget('reels_data');
+        $this->clearTrackedCache();
         $this->bumpAdminCacheVersion();
 
         return response()->json([
@@ -232,7 +234,7 @@ class ReelController extends Controller
         $reel = Reel::findOrFail($id);
         $reel->delete();
 
-        Cache::forget('reels_data');
+        $this->clearTrackedCache();
         $this->bumpAdminCacheVersion();
 
         return response()->json([
@@ -250,7 +252,7 @@ class ReelController extends Controller
         $reel = Reel::findOrFail($id);
         $reel->update(['is_active' => !$reel->is_active]);
 
-        Cache::forget('reels_data');
+        $this->clearTrackedCache();
         $this->bumpAdminCacheVersion();
 
         return response()->json([
@@ -276,7 +278,7 @@ class ReelController extends Controller
             Reel::where('id', $item['id'])->update(['display_order' => $item['display_order']]);
         }
 
-        Cache::forget('reels_data');
+        $this->clearTrackedCache();
         $this->bumpAdminCacheVersion();
 
         return response()->json([

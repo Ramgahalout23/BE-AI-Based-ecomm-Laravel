@@ -5,11 +5,15 @@ namespace App\Services;
 use App\Jobs\SendSmsJob;
 use App\Models\Setting;
 use App\Services\NotificationTemplateService;
+use App\Traits\CacheKeyRegistry;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Twilio\Rest\Client;
 
 class SMSService
 {
+    use CacheKeyRegistry;
+
     private ?Client $client = null;
     private ?string $clientAccountSid = null;
     private ?string $twilioPhoneNumber = null;
@@ -27,11 +31,13 @@ class SMSService
     public function isSmsEnabled(): bool
     {
         try {
-            $smsEnabled = Setting::where('module', 'SITE')->where('key', 'smsEnabled')->first();
-            if ($smsEnabled?->value !== 'true') return false;
+            return $this->cacheWithTracking('sms_enabled', 300, function () {
+                $smsEnabled = Setting::where('module', 'SITE')->where('key', 'smsEnabled')->first();
+                if ($smsEnabled?->value !== 'true') return false;
 
-            $settings = $this->fetchTwilioSettings();
-            return !empty($settings['accountSid']) && !empty($settings['authToken']) && !empty($settings['phoneNumber']);
+                $settings = $this->fetchTwilioSettings();
+                return !empty($settings['accountSid']) && !empty($settings['authToken']) && !empty($settings['phoneNumber']);
+            });
         } catch (\Exception $e) {
             return false;
         }

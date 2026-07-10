@@ -7,11 +7,14 @@ use App\Exceptions\AppError;
 use App\Models\Seo;
 use App\Models\Product;
 use App\Models\Category;
+use App\Traits\CacheKeyRegistry;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 class SeoService
 {
+    use CacheKeyRegistry;
+
     // Debounce state for sitemap regeneration (mimics TS debounce pattern)
     private static ?int $sitemapDebounceTimer = null;
     private static ?bool $sitemapPending = false;
@@ -81,7 +84,7 @@ class SeoService
 
     public function getGlobalSEO(): array
     {
-        return Cache::remember('seo_global', 3600, function () {
+        return $this->cacheWithTracking('seo_global', 3600, function () {
             $keys = ['seo_title', 'seo_description', 'seo_keywords'];
             $settings = \App\Models\Setting::whereIn('key', $keys)->pluck('value', 'key')->toArray();
 
@@ -107,7 +110,7 @@ class SeoService
             );
         }
 
-        Cache::forget('seo_global');
+        $this->clearTrackedCache();
 
         return $this->getGlobalSEO();
     }
@@ -116,7 +119,7 @@ class SeoService
 
     public function getSitemap(): array
     {
-        return Cache::remember('seo_sitemap', 300, function () {
+        return $this->cacheWithTracking('seo_sitemap', 300, function () {
             // Use chunked iteration to avoid memory issues with large datasets
             $entries = [];
             Seo::select('entity_type', 'entity_id', 'updated_at')
@@ -135,7 +138,7 @@ class SeoService
 
     public function refreshSitemap(): array
     {
-        Cache::forget('seo_sitemap');
+        $this->clearTrackedCache();
         return $this->getSitemap();
     }
 
@@ -218,7 +221,7 @@ class SeoService
         }
 
         // Invalidate sitemap caches after regeneration
-        Cache::forget('sitemap_db');
+        $this->clearTrackedCache();
 
         Log::info('Sitemap regenerated — ' . count($sitemapData) . ' entries');
     }
@@ -228,7 +231,7 @@ class SeoService
      */
     public function getSitemapFromDB(): array
     {
-        return Cache::remember('sitemap_db', 300, function () {
+        return $this->cacheWithTracking('sitemap_db', 300, function () {
             $entries = \App\Models\Sitemap::orderBy('url')->get();
             $lastGenerated = $entries->isNotEmpty() ? $entries->max('created_at') : null;
 
@@ -278,7 +281,7 @@ class SeoService
 
     public function getRobotsTxt(): array
     {
-        return Cache::remember('robots_txt', 3600, function () {
+        return $this->cacheWithTracking('robots_txt', 3600, function () {
             $robots = \App\Models\Setting::where('key', 'robots_txt')->first();
             return [
                 'content' => $robots?->value ?? "User-agent: *\nAllow: /\n",
@@ -293,7 +296,7 @@ class SeoService
             ['key' => 'robots_txt', 'module' => 'SITE'],
             ['value' => $content]
         );
-        Cache::forget('robots_txt');
+        $this->clearTrackedCache();
         return $this->getRobotsTxt();
     }
 
@@ -302,18 +305,14 @@ class SeoService
     public function listSEO(string $entityType, int $page = 1, int $limit = 50): array
     {
         $query = Seo::where('entity_type', $entityType);
-        $total = $query->count();
-        $data = $query->orderBy('created_at', 'desc')
-            ->skip(($page - 1) * $limit)
-            ->take($limit)
-            ->get()
-            ->toArray();
+        $paginator = $query->orderBy('created_at', 'desc')
+            ->paginate($limit, ['*'], 'page', $page);
 
         return [
-            'data' => $data,
-            'page' => $page,
-            'limit' => $limit,
-            'total' => $total,
+            'data' => $paginator->items(),
+            'page' => $paginator->currentPage(),
+            'limit' => $paginator->perPage(),
+            'total' => $paginator->total(),
         ];
     }
 

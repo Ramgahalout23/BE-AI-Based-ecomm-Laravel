@@ -38,7 +38,10 @@ class CouponRepository extends BaseRepository
 
     public function getUsageHistory(string $couponId): \Illuminate\Database\Eloquent\Collection
     {
-        return \App\Models\CouponUsage::with('user', 'order')
+        return \App\Models\CouponUsage::with([
+            'user:id,first_name,last_name,email',
+            'order:id,order_number,total,status,created_at',
+        ])
             ->where('coupon_id', $couponId)
             ->latest()
             ->get();

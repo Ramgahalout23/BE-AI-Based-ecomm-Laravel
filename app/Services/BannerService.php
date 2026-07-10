@@ -5,10 +5,13 @@ namespace App\Services;
 use App\Repositories\BannerRepository;
 use App\Exceptions\AppError;
 use App\Models\Setting;
+use App\Traits\CacheKeyRegistry;
 use Illuminate\Support\Facades\Cache;
 
 class BannerService
 {
+    use CacheKeyRegistry;
+
     // Valid banner types matching TypeScript VALID_TYPES
     private const VALID_TYPES = ['HERO', 'SALE', 'CATEGORY', 'POPUP', 'FEATURED', 'NEW_ARRIVAL'];
 
@@ -62,17 +65,7 @@ class BannerService
      */
     private function clearCache(): void
     {
-        Cache::forget('banners_hero_desktop');
-        Cache::forget('banners_hero_mobile');
-        Cache::forget('banners_sale_desktop');
-        Cache::forget('banners_sale_mobile');
-        Cache::forget('banners_category_desktop');
-        Cache::forget('banners_category_mobile');
-        Cache::forget('banners_popup');
-        Cache::forget('banners_featured_desktop');
-        Cache::forget('banners_featured_mobile');
-        Cache::forget('banners_new_arrival_desktop');
-        Cache::forget('banners_new_arrival_mobile');
+        $this->clearTrackedCache();
     }
 
     public function getActive(): array
@@ -106,6 +99,7 @@ class BannerService
 
         $result = $this->toCamelCase($this->bannerRepository->create($data)->toArray());
         $this->clearCache();
+        Cache::forget('homepage_all');
         return $result;
     }
 
@@ -119,6 +113,7 @@ class BannerService
 
         $result = $this->toCamelCase($this->bannerRepository->update($id, $data)->toArray());
         $this->clearCache();
+        Cache::forget('homepage_all');
         return $result;
     }
 
@@ -127,6 +122,7 @@ class BannerService
         $this->bannerRepository->findByIdOrFail($id);
         $this->bannerRepository->delete($id);
         $this->clearCache();
+        Cache::forget('homepage_all');
     }
 
     /**
@@ -135,7 +131,7 @@ class BannerService
     public function getActiveBanners(?string $type = null): array
     {
         $cacheKey = $type ? "banners_active_{$type}" : 'banners_active_all';
-        return Cache::remember($cacheKey, 300, function () use ($type) {
+        return $this->cacheWithTracking($cacheKey, 300, function () use ($type) {
             return $this->collectionToCamelCase($this->bannerRepository->getActiveByType($type)->toArray());
         });
     }
@@ -160,7 +156,7 @@ class BannerService
     public function getHeroBanners(string $device = 'desktop'): array
     {
         $cacheKey = "banners_hero_{$device}";
-        return Cache::remember($cacheKey, 300, function () use ($device) {
+        return $this->cacheWithTracking($cacheKey, 300, function () use ($device) {
             $banners = $this->bannerRepository->getByTypeAndDevice('HERO', $device)->toArray();
 
             // Read the global display filter setting (only filter if explicitly configured)
@@ -188,7 +184,7 @@ class BannerService
     public function getSaleBanners(string $device = 'desktop'): array
     {
         $cacheKey = "banners_sale_{$device}";
-        return Cache::remember($cacheKey, 300, function () use ($device) {
+        return $this->cacheWithTracking($cacheKey, 300, function () use ($device) {
             return $this->collectionToCamelCase($this->bannerRepository->getByTypeAndDevice('SALE', $device)->toArray());
         });
     }
@@ -199,7 +195,7 @@ class BannerService
     public function getCategoryBanners(string $device = 'desktop'): array
     {
         $cacheKey = "banners_category_{$device}";
-        return Cache::remember($cacheKey, 300, function () use ($device) {
+        return $this->cacheWithTracking($cacheKey, 300, function () use ($device) {
             return $this->collectionToCamelCase($this->bannerRepository->getByTypeAndDevice('CATEGORY', $device)->toArray());
         });
     }
@@ -209,7 +205,7 @@ class BannerService
      */
     public function getPopupBanners(): array
     {
-        return Cache::remember('banners_popup', 300, function () {
+        return $this->cacheWithTracking('banners_popup', 300, function () {
             return $this->collectionToCamelCase($this->bannerRepository->getByTypeAndDevice('POPUP', 'desktop')->toArray());
         });
     }
@@ -220,7 +216,7 @@ class BannerService
     public function getFeaturedBanners(string $device = 'desktop'): array
     {
         $cacheKey = "banners_featured_{$device}";
-        return Cache::remember($cacheKey, 300, function () use ($device) {
+        return $this->cacheWithTracking($cacheKey, 300, function () use ($device) {
             return $this->collectionToCamelCase($this->bannerRepository->getByTypeAndDevice('FEATURED', $device)->toArray());
         });
     }
@@ -231,7 +227,7 @@ class BannerService
     public function getNewArrivalBanners(string $device = 'desktop'): array
     {
         $cacheKey = "banners_new_arrival_{$device}";
-        return Cache::remember($cacheKey, 300, function () use ($device) {
+        return $this->cacheWithTracking($cacheKey, 300, function () use ($device) {
             return $this->collectionToCamelCase($this->bannerRepository->getByTypeAndDevice('NEW_ARRIVAL', $device)->toArray());
         });
     }
@@ -243,6 +239,7 @@ class BannerService
     {
         $banner = $this->bannerRepository->toggleActive($id);
         $this->clearCache();
+        Cache::forget('homepage_all');
         return $this->toCamelCase($banner->toArray());
     }
 
@@ -256,6 +253,7 @@ class BannerService
         }
         $this->bannerRepository->reorder($bannerIds);
         $this->clearCache();
+        Cache::forget('homepage_all');
     }
 
     /**

@@ -15,7 +15,11 @@ class CartRepository extends BaseRepository
 
     public function getUserCart(string $userId): Collection
     {
-        return CartItem::with('product.images')
+        return CartItem::with([
+            'product:id,name,slug,price,image_url,quantity,old_price,status',
+            'product.images:id,product_id,url',
+            'variant:id,product_id,name,price,quantity',
+        ])
             ->where('user_id', $userId)
             ->where('saved_for_later', false)
             ->get();
@@ -26,7 +30,11 @@ class CartRepository extends BaseRepository
      */
     public function getCartBySession(string $sessionId): Collection
     {
-        return CartItem::with('product.images')
+        return CartItem::with([
+            'product:id,name,slug,price,image_url,quantity,old_price,status',
+            'product.images:id,product_id,url',
+            'variant:id,product_id,name,price,quantity',
+        ])
             ->where('session_id', $sessionId)
             ->whereNull('user_id')
             ->get();
@@ -90,12 +98,19 @@ class CartRepository extends BaseRepository
 
     public function findItemById(string $itemId): ?CartItem
     {
-        return CartItem::with('product.images', 'variant')->find($itemId);
+        return CartItem::with([
+            'product:id,name,slug,price,image_url,quantity,old_price,status',
+            'product.images:id,product_id,url',
+            'variant:id,product_id,name,price,quantity',
+        ])->find($itemId);
     }
 
     public function findByUserAndProduct(string $userId, string $productId): ?CartItem
     {
-        return CartItem::with('product', 'variant')
+        return CartItem::with([
+            'product:id,name,slug,price,image_url,quantity,old_price,status',
+            'variant:id,product_id,name,price,quantity',
+        ])
             ->where('user_id', $userId)
             ->where('product_id', $productId)
             ->first();
@@ -239,7 +254,10 @@ class CartRepository extends BaseRepository
 
     public function getCartTotal(string $userId): array
     {
-        $items = CartItem::with('product.images')
+        $items = CartItem::with([
+            'product:id,name,slug,price,image_url,quantity,old_price,status',
+            'product.images:id,product_id,url',
+        ])
             ->where('user_id', $userId)
             ->get();
 

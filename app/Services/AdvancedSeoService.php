@@ -14,6 +14,14 @@ use Illuminate\Support\Facades\Http;
 class AdvancedSeoService
 {
     /**
+     * Batch-fetch multiple settings in a single query.
+     */
+    private function getSeoSettings(array $keys): array
+    {
+        return Setting::whereIn('key', $keys)->pluck('value', 'key')->toArray();
+    }
+
+    /**
      * Generate JSON-LD structured data for a product entity.
      */
     public function generateProductSchema(string $entityId): ?array
@@ -21,8 +29,9 @@ class AdvancedSeoService
         $product = Product::with('category', 'brand', 'variants')->find($entityId);
         if (!$product) return null;
 
-        $orgName = Setting::where('key', 'seo_organization_name')->value('value') ?? config('app.name');
-        $orgUrl = Setting::where('key', 'seo_organization_url')->value('value') ?? url('/');
+        $seo = $this->getSeoSettings(['seo_organization_name', 'seo_organization_url']);
+        $orgName = $seo['seo_organization_name'] ?? config('app.name');
+        $orgUrl = $seo['seo_organization_url'] ?? url('/');
         $baseUrl = url('/');
 
         $schema = [
@@ -105,10 +114,14 @@ class AdvancedSeoService
      */
     public function generateOrganizationSchema(): array
     {
-        $orgName = Setting::where('key', 'seo_organization_name')->value('value') ?? config('app.name');
-        $orgLogo = Setting::where('key', 'seo_organization_logo')->value('value') ?? url('/logo.png');
-        $orgUrl = Setting::where('key', 'seo_organization_url')->value('value') ?? url('/');
-        $socialLinks = Setting::where('key', 'seo_social_links')->value('value') ?? '';
+        $seo = $this->getSeoSettings([
+            'seo_organization_name', 'seo_organization_logo', 'seo_organization_url',
+            'seo_social_links', 'store_phone',
+        ]);
+        $orgName = $seo['seo_organization_name'] ?? config('app.name');
+        $orgLogo = $seo['seo_organization_logo'] ?? url('/logo.png');
+        $orgUrl = $seo['seo_organization_url'] ?? url('/');
+        $socialLinks = $seo['seo_social_links'] ?? '';
 
         $schema = [
             '@context' => 'https://schema.org',
@@ -118,7 +131,7 @@ class AdvancedSeoService
             'logo' => $orgLogo,
             'contactPoint' => [
                 '@type' => 'ContactPoint',
-                'telephone' => Setting::where('key', 'store_phone')->value('value') ?? '',
+                'telephone' => $seo['store_phone'] ?? '',
                 'contactType' => 'customer service',
                 'availableLanguage' => ['English', 'Hindi'],
             ],
@@ -145,7 +158,8 @@ class AdvancedSeoService
     {
         $items = [];
         $position = 1;
-        $separator = Setting::where('key', 'seo_breadcrumb_separator')->value('value') ?? '/';
+        $seo = $this->getSeoSettings(['seo_breadcrumb_separator']);
+        $separator = $seo['seo_breadcrumb_separator'] ?? '/';
 
         foreach ($crumbs as $crumb) {
             $items[] = [
@@ -194,8 +208,9 @@ class AdvancedSeoService
      */
     public function generateWebsiteSchema(): array
     {
-        $orgName = Setting::where('key', 'seo_organization_name')->value('value') ?? config('app.name');
-        $orgUrl = Setting::where('key', 'seo_organization_url')->value('value') ?? url('/');
+        $seo = $this->getSeoSettings(['seo_organization_name', 'seo_organization_url']);
+        $orgName = $seo['seo_organization_name'] ?? config('app.name');
+        $orgUrl = $seo['seo_organization_url'] ?? url('/');
 
         return [
             '@context' => 'https://schema.org',
@@ -474,12 +489,13 @@ class AdvancedSeoService
      */
     public function pushToIndexNow(string $url): bool
     {
-        $enabled = Setting::where('key', 'seo_enable_indexnow')->value('value');
+        $seo = $this->getSeoSettings(['seo_enable_indexnow', 'seo_indexnow_key']);
+        $enabled = $seo['seo_enable_indexnow'];
         if ($enabled !== 'true') return false;
 
         $host = parse_url($url, PHP_URL_HOST);
         // Use custom key from settings if set, otherwise fallback to md5(host)
-        $key = Setting::where('key', 'seo_indexnow_key')->value('value');
+        $key = $seo['seo_indexnow_key'];
         if (empty($key)) {
             $key = md5($host);
         }

@@ -49,26 +49,19 @@ class ReviewRepository extends BaseRepository
                 $query->where('is_moderated', true);
             }
 
-            $total = $query->count();
-
-            $items = $query->latest()
-                ->skip(($page - 1) * $perPage)
-                ->take($perPage)
-                ->get();
+            $paginator = $query->latest()->paginate($perPage, ['*'], 'page', $page);
 
             $avgRating = Review::where('product_id', $productId)
                 ->where('is_flagged', false)
                 ->where('is_moderated', true)
                 ->avg('rating') ?? 0;
 
-            $totalPages = (int) ceil($total / $perPage);
-
             return [
-                'items' => $items,
-                'total' => $total,
-                'page' => $page,
-                'limit' => $perPage,
-                'total_pages' => $totalPages,
+                'items' => $paginator->items(),
+                'total' => $paginator->total(),
+                'page' => $paginator->currentPage(),
+                'limit' => $paginator->perPage(),
+                'total_pages' => $paginator->lastPage(),
                 'average_rating' => round((float) $avgRating, 2),
             ];
         });
@@ -81,22 +74,16 @@ class ReviewRepository extends BaseRepository
     {
         $query = Review::where('user_id', $userId);
 
-        $total = $query->count();
-
-        $items = $query->with('product:id,name')
+        $paginator = $query->with('product:id,name')
             ->latest()
-            ->skip(($page - 1) * $perPage)
-            ->take($perPage)
-            ->get();
-
-        $totalPages = (int) ceil($total / $perPage);
+            ->paginate($perPage, ['*'], 'page', $page);
 
         return [
-            'items' => $items,
-            'total' => $total,
-            'page' => $page,
-            'limit' => $perPage,
-            'total_pages' => $totalPages,
+            'items' => $paginator->items(),
+            'total' => $paginator->total(),
+            'page' => $paginator->currentPage(),
+            'limit' => $paginator->perPage(),
+            'total_pages' => $paginator->lastPage(),
         ];
     }
 
@@ -215,20 +202,15 @@ class ReviewRepository extends BaseRepository
             });
         }
 
-        $total = $query->count();
-        $items = $query->orderBy('created_at')
-            ->skip(($page - 1) * $perPage)
-            ->take($perPage)
-            ->get();
-
-        $totalPages = (int) ceil($total / $perPage);
+        $paginator = $query->orderBy('created_at')
+            ->paginate($perPage, ['*'], 'page', $page);
 
         return [
-            'items' => $items,
-            'total' => $total,
-            'page' => $page,
-            'limit' => $perPage,
-            'total_pages' => $totalPages,
+            'items' => $paginator->items(),
+            'total' => $paginator->total(),
+            'page' => $paginator->currentPage(),
+            'limit' => $paginator->perPage(),
+            'total_pages' => $paginator->lastPage(),
         ];
     }
 
@@ -277,20 +259,15 @@ class ReviewRepository extends BaseRepository
                 ->where('is_flagged', false)
                 ->where('is_moderated', true);
 
-            $total = $query->count();
-            $items = $query->latest()
-                ->skip(($page - 1) * $perPage)
-                ->take($perPage)
-                ->get();
-
-            $totalPages = (int) ceil($total / $perPage);
+            $paginator = $query->latest()
+                ->paginate($perPage, ['*'], 'page', $page);
 
             return [
-                'items' => $items,
-                'total' => $total,
-                'page' => $page,
-                'limit' => $perPage,
-                'total_pages' => $totalPages,
+                'items' => $paginator->items(),
+                'total' => $paginator->total(),
+                'page' => $paginator->currentPage(),
+                'limit' => $paginator->perPage(),
+                'total_pages' => $paginator->lastPage(),
             ];
         });
     }

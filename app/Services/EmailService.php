@@ -4,12 +4,15 @@ namespace App\Services;
 
 use App\Jobs\SendEmailJob;
 use App\Models\Setting;
+use App\Traits\CacheKeyRegistry;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 
 class EmailService
 {
+    use CacheKeyRegistry;
+
     public function sendEmail(string $to, string $subject, string $html, ?string $text = null): bool
     {
         try {
@@ -46,8 +49,10 @@ class EmailService
     public function isEmailEnabled(): bool
     {
         try {
-            $setting = Setting::where('module', 'SITE')->where('key', 'emailEnabled')->first();
-            return !($setting && $setting->value === 'false');
+            return $this->cacheWithTracking('email_enabled', 300, function () {
+                $setting = Setting::where('module', 'SITE')->where('key', 'emailEnabled')->first();
+                return !($setting && $setting->value === 'false');
+            });
         } catch (\Exception $e) { return true; }
     }
 
@@ -140,8 +145,10 @@ class EmailService
     {
         try {
             if (!$this->isEmailEnabled()) return false;
-            $setting = Setting::where('module', 'SMTP')->where('key', "template.{$templateId}.active")->first();
-            return $setting?->value !== 'false';
+            return $this->cacheWithTracking("email_template_active_{$templateId}", 300, function () use ($templateId) {
+                $setting = Setting::where('module', 'SMTP')->where('key', "template.{$templateId}.active")->first();
+                return $setting?->value !== 'false';
+            });
         } catch (\Exception $e) { return true; }
     }
 
@@ -192,7 +199,7 @@ class EmailService
 
     private function fetchSmtpSettings(): array
     {
-        return Cache::remember('smtp_settings', 300, function () {
+        return $this->cacheWithTracking('smtp_settings', 300, function () {
             try {
                 $settings = Setting::where('module', 'SMTP')->pluck('value', 'key')->toArray();
                 return [
@@ -322,7 +329,9 @@ class EmailService
     private function getStoreName(): string
     {
         try {
-            return Setting::where('module', 'SITE')->where('key', 'storeName')->value('value') ?? 'THREVOLT';
+            return $this->cacheWithTracking('store_name', 300, function () {
+                return Setting::where('module', 'SITE')->where('key', 'storeName')->value('value') ?? 'THREVOLT';
+            });
         } catch (\Exception $e) { return 'THREVOLT'; }
     }
 

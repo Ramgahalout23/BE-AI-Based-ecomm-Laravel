@@ -216,6 +216,7 @@ class ProductService
 
         // Clear cached lists so new product appears immediately
         $this->clearListCache();
+        Cache::forget('homepage_all');
 
         // Auto-create default variant (matching TS behavior)
         try {
@@ -253,6 +254,7 @@ class ProductService
 
         $product = $this->productRepository->update($id, $data);
         $this->clearListCache();
+        Cache::forget('homepage_all');
         return $product->toArray();
     }
 
@@ -261,6 +263,7 @@ class ProductService
         $this->productRepository->findByIdOrFail($id);
         $this->productRepository->delete($id);
         $this->clearListCache();
+        Cache::forget('homepage_all');
         
         // Trigger sitemap regeneration and cache invalidation (matching TS behavior)
         try {
@@ -342,6 +345,7 @@ class ProductService
 
         $updated = $this->productRepository->update($id, ['status' => 'PUBLISHED']);
         $this->clearListCache();
+        Cache::forget('homepage_all');
         
         // Trigger sitemap regeneration and cache invalidation (matching TS behavior)
         try {
@@ -360,6 +364,7 @@ class ProductService
 
         $updated = $this->productRepository->update($id, ['status' => 'ARCHIVED']);
         $this->clearListCache();
+        Cache::forget('homepage_all');
         
         // Trigger sitemap regeneration and cache invalidation (matching TS behavior)
         try {

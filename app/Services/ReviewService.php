@@ -4,7 +4,10 @@ namespace App\Services;
 
 use App\Repositories\ReviewRepository;
 use App\Exceptions\AppError;
+use App\Jobs\SendNotificationJob;
 use App\Models\Product;
+use App\Models\User;
+use Illuminate\Support\Facades\Log;
 
 class ReviewService
 {
@@ -60,6 +63,9 @@ class ReviewService
         $this->reviewRepository->updateProductRating($data['product_id']);
         $this->reviewRepository->clearProductReviewCache($data['product_id']);
 
+        // ── Notify admins about the new review ──
+        $this->notifyAdminsOfNewReview($review, $product);
+
         return $review->load('user:id,first_name,last_name,email,avatar')->toArray();
     }
 
@@ -94,6 +100,9 @@ class ReviewService
         $data['user_id'] = null;
 
         $review = $this->reviewRepository->create($data);
+
+        // ── Notify admins about the new store review ──
+        $this->notifyAdminsOfNewReview($review, null);
 
         return $review->toArray();
     }
@@ -187,7 +196,13 @@ class ReviewService
         $review = $this->reviewRepository->update($id, $data);
         $this->reviewRepository->updateProductRating($review->product_id);
         $this->reviewRepository->clearProductReviewCache($review->product_id);
-        return $review->fresh()->load('user', 'product:id,name')->toArray();
+
+        // ── Notify the user when their review is approved ──
+        if ($status === 'APPROVED' && $review->user_id) {
+            $this->notifyReviewApproved($review);
+        }
+
+        return $review->fresh()->load('user', 'product:id,name,slug')->toArray();
     }
 
     /**
@@ -241,6 +256,98 @@ class ReviewService
     }
 
     /**
+     * Send in-app notifications to all admin users about a new pending review.
+     */
+    private function notifyAdminsOfNewReview($review, ?Product $product): void
+    {
+        try {
+            // Find all admin users
+            $admins = User::whereIn('role', ['ADMIN', 'SUPER_ADMIN'])->get(['id', 'first_name']);
+            if ($admins->isEmpty()) return;
+
+            $reviewerName = '';
+            if ($review->user_id && $review->user) {
+                $reviewerName = trim($review->user->first_name . ' ' . ($review->user->last_name ?? ''));
+            } elseif ($review->name) {
+                $reviewerName = $review->name;
+            }
+
+            $productName = $product ? $product->name : null;
+            $productSlug = $product ? $product->slug : null;
+
+            $title = $productName
+                ? "New Review: {$productName}"
+                : "New Store Review 💬";
+
+            $message = $reviewerName
+                ? "{$reviewerName} left a new review" . ($productName ? " on {$productName}" : '') . "."
+                : "A new review has been submitted" . ($productName ? " for {$productName}" : '') . ".";
+
+            $notificationData = [
+                'reviewId' => $review->id,
+                'userId' => $review->user_id,
+                'productId' => $review->product_id,
+                'productName' => $productName,
+                'productSlug' => $productSlug,
+            ];
+
+            foreach ($admins as $admin) {
+                SendNotificationJob::dispatch(
+                    $admin->id,
+                    'REVIEW',
+                    $title,
+                    $message,
+                    $notificationData
+                );
+            }
+
+            Log::info('[ReviewService] Notified admins of new review', [
+                'review_id' => $review->id,
+                'admin_count' => $admins->count(),
+                'product_name' => $productName,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('[ReviewService] Failed to notify admins of new review', [
+                'review_id' => $review->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Send an in-app notification to the user when their review is approved.
+     */
+    private function notifyReviewApproved($review): void
+    {
+        try {
+            $product = Product::find($review->product_id);
+            if (!$product) return;
+
+            $productName = $product->name ?? 'Product';
+            $productSlug = $product->slug;
+
+            SendNotificationJob::dispatch(
+                $review->user_id,
+                'REVIEW',
+                "Review Approved ✅",
+                "Your review on \"{$productName}\" has been approved and is now live!",
+                ['productId' => $review->product_id, 'productSlug' => $productSlug, 'productName' => $productName]
+            );
+
+            Log::info('[ReviewService] Notified user of approved review', [
+                'review_id' => $review->id,
+                'user_id' => $review->user_id,
+                'product_id' => $review->product_id,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('[ReviewService] Failed to notify user of approved review', [
+                'review_id' => $review->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
      * Approve a review (admin).
      */
     public function approveReview(string $reviewId): array
@@ -253,6 +360,11 @@ class ReviewService
         $approved = $this->reviewRepository->approveReview($reviewId);
         $this->reviewRepository->updateProductRating($review->product_id);
         $this->reviewRepository->clearProductReviewCache($review->product_id);
+
+        // Notify the user when their review is approved
+        if ($review->user_id) {
+            $this->notifyReviewApproved($review);
+        }
 
         return $approved->toArray();
     }

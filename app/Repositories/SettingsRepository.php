@@ -3,10 +3,12 @@
 namespace App\Repositories;
 
 use App\Models\Setting;
+use App\Traits\CacheKeyRegistry;
 use Illuminate\Support\Facades\Cache;
 
 class SettingsRepository extends BaseRepository
 {
+    use CacheKeyRegistry;
     private const CACHE_TTL = 600; // 10 minutes
 
     protected function modelClass(): string
@@ -20,7 +22,7 @@ class SettingsRepository extends BaseRepository
     public function getValue(string $key, mixed $default = null): mixed
     {
         $cacheKey = "setting_{$key}";
-        return Cache::remember($cacheKey, self::CACHE_TTL, function () use ($key, $default) {
+        return $this->cacheWithTracking($cacheKey, self::CACHE_TTL, function () use ($key, $default) {
             $setting = Setting::where('key', $key)->first();
             return $setting ? $setting->value : $default;
         });
@@ -31,8 +33,7 @@ class SettingsRepository extends BaseRepository
      */
     public function setValue(string $key, mixed $value): Setting
     {
-        Cache::forget('settings_all');
-        Cache::forget("setting_{$key}");
+        $this->clearTrackedCache();
         self::$_allSettingsCache = null; // reset same-request cache
         return Setting::updateOrCreate(['key' => $key], ['value' => $value]);
     }
@@ -58,7 +59,7 @@ class SettingsRepository extends BaseRepository
             return self::$_allSettingsCache;
         }
 
-        self::$_allSettingsCache = Cache::remember('settings_all', self::CACHE_TTL, function () {
+        self::$_allSettingsCache = $this->cacheWithTracking('settings_all', self::CACHE_TTL, function () {
             return Setting::pluck('value', 'key')->toArray();
         });
 

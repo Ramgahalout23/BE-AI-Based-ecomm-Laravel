@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Setting;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 class NotificationTemplateService
@@ -298,6 +299,9 @@ class NotificationTemplateService
             }
         }
 
+        // Clear cached template active status so changes take effect immediately
+        Cache::forget("nt_template_active_{$id}");
+
         return $this->getTemplate($id);
     }
 
@@ -314,6 +318,10 @@ class NotificationTemplateService
             ['module' => 'NOTIFICATION_TEMPLATE', 'key' => "nt.{$id}.active"],
             ['value' => $newActive]
         );
+
+        // Clear cached template active status so toggle takes effect immediately
+        Cache::forget("nt_template_active_{$id}");
+
         return ['id' => $id, 'active' => $newActive === 'true'];
     }
 
@@ -367,10 +375,12 @@ class NotificationTemplateService
     public function isTemplateActive(string $templateId): bool
     {
         try {
-            $setting = Setting::where('module', 'NOTIFICATION_TEMPLATE')
-                ->where('key', "nt.{$templateId}.active")
-                ->first();
-            return $setting?->value !== 'false';
+            return Cache::remember("nt_template_active_{$templateId}", 300, function () use ($templateId) {
+                $setting = Setting::where('module', 'NOTIFICATION_TEMPLATE')
+                    ->where('key', "nt.{$templateId}.active")
+                    ->first();
+                return $setting?->value !== 'false';
+            });
         } catch (\Exception $e) {
             return true;
         }

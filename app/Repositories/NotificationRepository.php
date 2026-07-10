@@ -3,10 +3,12 @@
 namespace App\Repositories;
 
 use App\Models\UserNotification;
+use App\Traits\CacheKeyRegistry;
 use Illuminate\Support\Facades\Cache;
 
 class NotificationRepository extends BaseRepository
 {
+    use CacheKeyRegistry;
     protected function modelClass(): string
     {
         return UserNotification::class;
@@ -26,15 +28,7 @@ class NotificationRepository extends BaseRepository
      */
     private function clearUserCache(string $userId): void
     {
-        $keys = [
-            $this->userCacheKey($userId, 'list'),
-            $this->userCacheKey($userId, 'unread_count'),
-            $this->userCacheKey($userId, 'unread_list'),
-            $this->userCacheKey($userId, 'stats'),
-        ];
-        foreach ($keys as $key) {
-            Cache::forget($key);
-        }
+        $this->clearTrackedCache();
     }
 
     public function getUserNotifications(string $userId, int $page = 1, int $limit = 20): array
@@ -42,28 +36,23 @@ class NotificationRepository extends BaseRepository
         // Cache the paginated result per user (keyed by page+limit too)
         $cacheKey = $this->userCacheKey($userId, "list:{$page}:{$limit}");
 
-        return Cache::remember($cacheKey, 30, function () use ($userId, $page, $limit) {
+        return $this->cacheWithTracking($cacheKey, 30, function () use ($userId, $page, $limit) {
             $query = UserNotification::where('user_id', $userId);
-
-            $total = $query->count();
-            $items = $query->latest()
-                ->skip(($page - 1) * $limit)
-                ->take($limit)
-                ->get();
+            $paginator = $query->latest()->paginate($limit, ['*'], 'page', $page);
 
             return [
-                'notifications' => $items->toArray(),
-                'page' => $page,
-                'limit' => $limit,
-                'total' => $total,
-                'total_pages' => (int) ceil($total / $limit),
+                'notifications' => $paginator->items(),
+                'page' => $paginator->currentPage(),
+                'limit' => $paginator->perPage(),
+                'total' => $paginator->total(),
+                'total_pages' => $paginator->lastPage(),
             ];
         });
     }
 
     public function getUnreadCount(string $userId): int
     {
-        return Cache::remember($this->userCacheKey($userId, 'unread_count'), 120, function () use ($userId) {
+        return $this->cacheWithTracking($this->userCacheKey($userId, 'unread_count'), 120, function () use ($userId) {
             return UserNotification::where('user_id', $userId)
                 ->where('is_read', false)
                 ->count();
@@ -105,7 +94,7 @@ class NotificationRepository extends BaseRepository
 
     public function adminGetAll(int $page = 1, int $limit = 20, ?string $search = null): array
     {
-        $query = UserNotification::with('user');
+        $query = UserNotification::with('user:id,first_name,last_name,email');
 
         if ($search) {
             $query->where(function ($q) use ($search) {
@@ -147,7 +136,7 @@ class NotificationRepository extends BaseRepository
     {
         $cacheKey = $this->userCacheKey($userId, "by_type:{$type}:{$page}:{$limit}");
 
-        return Cache::remember($cacheKey, 30, function () use ($userId, $type, $page, $limit) {
+        return $this->cacheWithTracking($cacheKey, 30, function () use ($userId, $type, $page, $limit) {
             $query = UserNotification::where('user_id', $userId)
                 ->where('type', $type);
 
@@ -165,7 +154,7 @@ class NotificationRepository extends BaseRepository
 
     public function getNotificationStats(string $userId): array
     {
-        return Cache::remember($this->userCacheKey($userId, 'stats'), 30, function () use ($userId) {
+        return $this->cacheWithTracking($this->userCacheKey($userId, 'stats'), 30, function () use ($userId) {
             $total = UserNotification::where('user_id', $userId)->count();
             $unread = UserNotification::where('user_id', $userId)->where('is_read', false)->count();
             $byType = UserNotification::where('user_id', $userId)

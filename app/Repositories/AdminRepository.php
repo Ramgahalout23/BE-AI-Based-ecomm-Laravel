@@ -19,6 +19,7 @@ use App\Models\ProductVariant;
 use App\Models\InventoryHistory;
 use App\Models\UserNotification;
 use App\Services\AnalyticsSummaryService;
+use App\Traits\CacheKeyRegistry;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -26,6 +27,8 @@ use Illuminate\Support\Collection;
 
 class AdminRepository
 {
+    use CacheKeyRegistry;
+
     public function __construct(
         protected AnalyticsSummaryService $analyticsSummary
     ) {}
@@ -39,7 +42,7 @@ class AdminRepository
             return $this->analyticsSummary->getDashboardMetrics($startDate, $endDate);
         }
 
-        return Cache::remember('admin_dashboard_metrics', 300, function () {
+        return $this->cacheWithTracking('admin_dashboard_metrics', 300, function () {
             // Read from pre-aggregated summary table instead of scanning source tables
             return $this->analyticsSummary->getDashboardMetrics();
         });
@@ -47,41 +50,14 @@ class AdminRepository
 
     public function getRecentOrders(int $limit = 5): Collection
     {
-        return Cache::remember("admin_recent_orders_{$limit}", 300, function () use ($limit) {
+        return $this->cacheWithTracking("admin_recent_orders_{$limit}", 300, function () use ($limit) {
             return Order::with('user')->latest()->take($limit)->get();
         });
     }
 
-    /**
-     * Clear cached dashboard & analytics data.
-     * Call this whenever orders, users, products, etc. are created/updated/deleted.
-     */
     public function clearDashboardCache(): void
     {
-        $keys = [
-            'admin_dashboard_metrics',
-            'admin_recent_orders',
-            'admin_user_analytics',
-            'admin_customer_growth_12',
-            'admin_recent_users_5',
-            'admin_order_status_dist',
-            'admin_order_revenue_stats',
-            'admin_daily_trend_combined_30',
-            'admin_hourly_dist',
-            'admin_revenue_comparison',
-            'admin_product_analytics_20',
-            'admin_category_performance',
-            'admin_top_customers_20',
-            'admin_payment_method_stats',
-        'admin_payment_trends_30',
-        'admin_conversion_metrics',
-        'admin_review_analytics_30',
-        'admin_low_stock_variants',
-        ];
-
-        foreach ($keys as $key) {
-            Cache::forget($key);
-        }
+        $this->clearTrackedCache();
     }
 
     /**
@@ -124,7 +100,7 @@ class AdminRepository
      */
     private function getCombinedDailyTrend(int $days = 30): array
     {
-        return Cache::remember("admin_daily_trend_combined_{$days}", 300, function () use ($days) {
+        return $this->cacheWithTracking("admin_daily_trend_combined_{$days}", 300, function () use ($days) {
             $start = now()->subDays($days)->format('Y-m-d');
             $end   = now()->format('Y-m-d');
             $rows  = $this->analyticsSummary->getDailyTrend($start, $end);
@@ -179,7 +155,7 @@ class AdminRepository
      */
     public function getLowStockVariants(): array
     {
-        return Cache::remember('admin_low_stock_variants', 300, function () {
+        return $this->cacheWithTracking('admin_low_stock_variants', 300, function () {
             return ProductVariant::with('product:id,name')
                 ->where('quantity', '<=', 5)
                 ->orderBy('quantity')
@@ -191,7 +167,7 @@ class AdminRepository
 
     public function getProductAnalytics(int $limit = 20): Collection
     {
-        return Cache::remember("admin_product_analytics_{$limit}", 300, function () use ($limit) {
+        return $this->cacheWithTracking("admin_product_analytics_{$limit}", 300, function () use ($limit) {
             $products = Product::withCount('orderItems as sales_count')
                 ->where('status', 'PUBLISHED')
                 ->orderByDesc('view_count')
@@ -214,7 +190,7 @@ class AdminRepository
 
     public function getUserAnalytics(): array
     {
-        return Cache::remember('admin_user_analytics', 300, function () {
+        return $this->cacheWithTracking('admin_user_analytics', 300, function () {
             $totalUsers = User::count();
             $newUsersToday = User::whereDate('created_at', today())->count();
             $newUsersThisMonth = User::whereMonth('created_at', now()->month)->count();
@@ -232,7 +208,7 @@ class AdminRepository
 
     public function getOrderStatusDistribution(): array
     {
-        return Cache::remember('admin_order_status_dist', 300, function () {
+        return $this->cacheWithTracking('admin_order_status_dist', 300, function () {
             $rows = Order::select('status', DB::raw('COUNT(*) as count'), DB::raw('SUM(total) as total'))
                 ->groupBy('status')
                 ->get();
@@ -248,7 +224,7 @@ class AdminRepository
 
     public function getPaymentMethodStats(): array
     {
-        return Cache::remember('admin_payment_method_stats', 300, function () {
+        return $this->cacheWithTracking('admin_payment_method_stats', 300, function () {
             $rows = \App\Models\Payment::select('method as payment_method', DB::raw('COUNT(*) as count'), DB::raw('SUM(amount) as total'))
                 ->groupBy('method')
                 ->get();
@@ -267,7 +243,7 @@ class AdminRepository
 
     public function getCustomerLifetimeValue(string $userId): array
     {
-        return Cache::remember("admin_clv_{$userId}", 600, function () use ($userId) {
+        return $this->cacheWithTracking("admin_clv_{$userId}", 600, function () use ($userId) {
             // Single aggregate query — instead of fetching ALL rows
             $stats = Order::where('user_id', $userId)
                 ->whereIn('status', ['DELIVERED', 'CONFIRMED'])
@@ -289,7 +265,7 @@ class AdminRepository
 
     public function getTopCustomers(int $limit = 20): Collection
     {
-        return Cache::remember("admin_top_customers_{$limit}", 300, function () use ($limit) {
+        return $this->cacheWithTracking("admin_top_customers_{$limit}", 300, function () use ($limit) {
             return User::withCount(['orders' => function ($q) {
                     $q->whereIn('status', ['DELIVERED', 'CONFIRMED']);
                 }])
@@ -304,7 +280,7 @@ class AdminRepository
 
     public function getCategoryPerformance(): Collection
     {
-        return Cache::remember('admin_category_performance', 300, function () {
+        return $this->cacheWithTracking('admin_category_performance', 300, function () {
             return Category::withCount(['products', 'products as total_sold' => function ($q) {
                     $q->whereHas('orderItems');
                 }])
@@ -319,7 +295,7 @@ class AdminRepository
 
     public function getHourlyDistribution(): array
     {
-        return Cache::remember('admin_hourly_dist', 300, function () {
+        return $this->cacheWithTracking('admin_hourly_dist', 300, function () {
             $rows = Order::select(
                     DB::raw('EXTRACT(HOUR FROM created_at) as hour'),
                     DB::raw('COUNT(*) as order_count'),
@@ -341,7 +317,7 @@ class AdminRepository
 
     public function getRevenueComparison(): array
     {
-        return Cache::remember('admin_revenue_comparison', 300, function () {
+        return $this->cacheWithTracking('admin_revenue_comparison', 300, function () {
             // Read from summary table instead of scanning orders
             $thisMonthStart = now()->startOfMonth()->format('Y-m-d');
             $thisMonthEnd   = now()->format('Y-m-d');
@@ -372,7 +348,7 @@ class AdminRepository
 
     public function getCustomerGrowth(int $months = 12): array
     {
-        return Cache::remember("admin_customer_growth_{$months}", 300, function () use ($months) {
+        return $this->cacheWithTracking("admin_customer_growth_{$months}", 300, function () use ($months) {
             $start = now()->subMonths($months)->startOfMonth()->format('Y-m-d');
             $end   = now()->format('Y-m-d');
 
@@ -400,7 +376,7 @@ class AdminRepository
 
     public function getConversionMetrics(): array
     {
-        return Cache::remember('admin_conversion_metrics', 300, function () {
+        return $this->cacheWithTracking('admin_conversion_metrics', 300, function () {
             // Single query with subselects — 1 DB round trip instead of 4
             $pageViewsTable = (new \App\Models\PageView)->getTable();
             $cartItemsTable = (new \App\Models\CartItem)->getTable();
@@ -441,7 +417,7 @@ class AdminRepository
 
     public function getPaymentMethodTrends(int $days = 30): array
     {
-        return Cache::remember("admin_payment_trends_{$days}", 300, function () use ($days) {
+        return $this->cacheWithTracking("admin_payment_trends_{$days}", 300, function () use ($days) {
             return \App\Models\Payment::select(
                     'method as payment_method',
                     DB::raw('DATE(created_at) as date'),
@@ -458,7 +434,7 @@ class AdminRepository
 
     public function getOrderRevenueStats(): array
     {
-        return Cache::remember('admin_order_revenue_stats', 300, function () {
+        return $this->cacheWithTracking('admin_order_revenue_stats', 300, function () {
             $totalRevenue = Order::whereIn('status', ['DELIVERED', 'CONFIRMED'])->sum('total');
             $totalOrders = Order::count();
             $avgOrderValue = $totalOrders > 0 ? $totalRevenue / $totalOrders : 0;
@@ -617,7 +593,7 @@ class AdminRepository
 
     public function getRecentUsers(int $limit = 5): Collection
     {
-        return Cache::remember("admin_recent_users_{$limit}", 300, function () use ($limit) {
+        return $this->cacheWithTracking("admin_recent_users_{$limit}", 300, function () use ($limit) {
             return User::latest()->take($limit)->get();
         });
     }
@@ -823,9 +799,16 @@ class AdminRepository
 
     public function getProductById(string $id): ?Product
     {
-        return Product::with(['category', 'brand', 'images', 'variants', 'inventory', 'reviews' => function ($q) {
-            $q->latest()->take(20);
-        }])->find($id);
+        return Product::with([
+            'category:id,name,slug',
+            'brand:id,name,slug',
+            'images:id,product_id,url,display_order',
+            'variants:id,product_id,name,price,quantity,is_active',
+            'inventory:id,product_id,available_quantity,total_quantity,reserved_quantity',
+            'reviews' => function ($q) {
+                $q->latest()->take(20);
+            },
+        ])->find($id);
     }
 
     public function createProduct(array $data): Product
@@ -904,7 +887,14 @@ class AdminRepository
 
     public function getOrderById(string $id): ?Order
     {
-        return Order::with(['items.product', 'user', 'payment', 'timeline', 'shippingAddress', 'billingAddress'])->find($id);
+        return Order::with([
+            'items.product:id,name,slug,price,image_url,quantity',
+            'user:id,first_name,last_name,email',
+            'payment:id,order_id,amount,method,status,created_at',
+            'timeline:id,order_id,status,note,created_at',
+            'shippingAddress',
+            'billingAddress',
+        ])->find($id);
     }
 
     public function updateOrderStatus(string $id, string $status): Order
@@ -1277,7 +1267,7 @@ class AdminRepository
      */
     public function getReviewAnalytics(int $days = 30): array
     {
-        return Cache::remember("admin_review_analytics_{$days}", 300, function () use ($days) {
+        return $this->cacheWithTracking("admin_review_analytics_{$days}", 300, function () use ($days) {
             $table = (new Review)->getTable();
 
             // ── Query 1: Overall stats + avg rating + rating distribution ──

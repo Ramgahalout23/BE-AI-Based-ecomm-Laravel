@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Controllers\Api\Traits\MapsCamelCaseFields;
 use App\Services\AuthService;
 use App\Exceptions\AppError;
+use App\Traits\CacheKeyRegistry;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -14,6 +15,7 @@ use Illuminate\Support\Facades\Cache;
 
 class AuthController extends Controller
 {
+    use CacheKeyRegistry;
     use MapsCamelCaseFields;
 
     public function __construct(
@@ -71,7 +73,7 @@ class AuthController extends Controller
     public function me(): JsonResponse
     {
         $userId = Auth::id();
-        $user = Cache::remember("auth_user_profile:{$userId}", 60, function () use ($userId) {
+        $user = $this->cacheWithTracking("auth_user_profile:{$userId}", 60, function () use ($userId) {
             return Auth::user()->load(['addresses', 'wallet', 'loyaltyPoints', 'vipTier']);
         });
         return response()->json(['success' => true, 'data' => $user]);
@@ -95,7 +97,7 @@ class AuthController extends Controller
             ]);
 
             $user = $this->authService->updateProfile(Auth::id(), $validated);
-            Cache::forget('auth_user_profile:' . Auth::id());
+            $this->clearTrackedCache();
             return response()->json(['success' => true, 'message' => 'Profile updated', 'data' => $user]);
         } catch (AppError $e) {
             return $e->render();

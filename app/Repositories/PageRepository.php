@@ -3,12 +3,14 @@
 namespace App\Repositories;
 
 use App\Models\Page;
+use App\Traits\CacheKeyRegistry;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Cache;
 
 class PageRepository extends BaseRepository
 {
+    use CacheKeyRegistry;
     protected function modelClass(): string
     {
         return Page::class;
@@ -25,7 +27,7 @@ class PageRepository extends BaseRepository
      */
     public function getPublished(): Collection
     {
-        return Cache::remember('pages_published', 60, function () {
+        return $this->cacheWithTracking('pages_published', 60, function () {
             return Page::where('is_published', true)->orderBy('title')->get();
         });
     }
@@ -44,6 +46,6 @@ class PageRepository extends BaseRepository
      */
     public function clearPublishedCache(): void
     {
-        Cache::forget('pages_published');
+        $this->clearTrackedCache();
     }
 }

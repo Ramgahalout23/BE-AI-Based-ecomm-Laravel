@@ -3,10 +3,12 @@
 namespace App\Repositories;
 
 use App\Models\Promotion;
+use App\Traits\CacheKeyRegistry;
 use Illuminate\Support\Facades\Cache;
 
 class PromotionRepository extends BaseRepository
 {
+    use CacheKeyRegistry;
     protected function modelClass(): string
     {
         return Promotion::class;
@@ -26,7 +28,7 @@ class PromotionRepository extends BaseRepository
      */
     public function getActive(): \Illuminate\Database\Eloquent\Collection
     {
-        return Cache::remember('promotions_active', 300, function () {
+        return $this->cacheWithTracking('promotions_active', 300, function () {
             $with = ['products:id,name,slug,price', 'categories:id,name,slug'];
 
             // 1) Promotions with no end date (permanent/evergreen)
@@ -80,15 +82,11 @@ class PromotionRepository extends BaseRepository
             });
         }
 
-        $total = $query->count();
-
-        $promotions = $query->orderBy('priority', 'desc')
-            ->skip(($page - 1) * $limit)
-            ->take($limit)
-            ->get();
+        $paginator = $query->orderBy('priority', 'desc')
+            ->paginate($limit, ['*'], 'page', $page);
 
         // Map snake_case DB fields to camelCase expected by frontend
-        $items = $promotions->map(function ($promotion) {
+        $items = collect($paginator->items())->map(function ($promotion) {
             $products = $promotion->products->map(fn($p) => [
                 'id' => $p->id,
                 'name' => $p->name,
@@ -114,10 +112,10 @@ class PromotionRepository extends BaseRepository
 
         return [
             'items' => $items,
-            'page' => $page,
-            'limit' => $limit,
-            'total' => $total,
-            'total_pages' => (int) ceil($total / $limit),
+            'page' => $paginator->currentPage(),
+            'limit' => $paginator->perPage(),
+            'total' => $paginator->total(),
+            'total_pages' => $paginator->lastPage(),
         ];
     }
 
@@ -158,7 +156,7 @@ class PromotionRepository extends BaseRepository
      */
     private function clearActiveCache(): void
     {
-        Cache::forget('promotions_active');
+        $this->clearTrackedCache();
     }
 
     /**

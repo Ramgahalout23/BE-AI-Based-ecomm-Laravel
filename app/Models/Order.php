@@ -36,4 +36,5 @@ class Order extends Model
     public function refundRequests(): HasMany { return $this->hasMany(RefundRequest::class); }
     public function returnRequests(): HasMany { return $this->hasMany(ReturnRequest::class); }
     public function supportTickets(): HasMany { return $this->hasMany(SupportTicket::class); }
+    public function customDesigns(): HasMany { return $this->hasMany(CustomDesign::class); }
 }

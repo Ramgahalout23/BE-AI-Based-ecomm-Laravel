@@ -44,6 +44,7 @@ class CartService
                 'color' => $item->color,
                 'variant_id' => $item->variant_id,
                 'variantId' => $item->variant_id,
+                'variantStock' => $item->variant?->quantity !== null ? (int) $item->variant->quantity : null,
                 'price' => (float) $price,
                 'total' => (float) $price * $qty,
                 'imageUrl' => $item->product?->images?->first()?->url ?? null,
@@ -70,15 +71,23 @@ class CartService
         $product = Product::find($productId);
         if (!$product) throw AppError::notFound('Product not found');
 
-        // Check variant-level stock if product has variants (matching TS variant-first approach)
-        // Single query: sum() returns 0 if no rows exist, no need for separate exists() check
-        $totalVariantStock = (int) ProductVariant::where('product_id', $productId)->sum('quantity');
-        if ($totalVariantStock > 0) {
-            if ($totalVariantStock < $quantity) {
-                throw AppError::validation('Not enough stock available across variants');
+        // Check stock: when a specific variant is selected, check its stock individually.
+        // Otherwise, sum variant stock or fall back to base product stock.
+        if ($variantId) {
+            $variant = ProductVariant::find($variantId);
+            if (!$variant) throw AppError::notFound('Variant not found');
+            if ((int) $variant->quantity < $quantity) {
+                throw AppError::validation('Not enough stock available for this variant');
             }
-        } elseif ($product->quantity < $quantity) {
-            throw AppError::validation('Not enough stock available');
+        } else {
+            $totalVariantStock = (int) ProductVariant::where('product_id', $productId)->sum('quantity');
+            if ($totalVariantStock > 0) {
+                if ($totalVariantStock < $quantity) {
+                    throw AppError::validation('Not enough stock available across variants');
+                }
+            } elseif ($product->quantity < $quantity) {
+                throw AppError::validation('Not enough stock available');
+            }
         }
 
         $item = $this->cartRepository->addOrUpdateItem($userId, $productId, $quantity, $sessionId, $size, $color, $variantId);
@@ -198,6 +207,16 @@ class CartService
             if (!$item->product || $item->product->status !== 'PUBLISHED') {
                 $name = $item->product ? $item->product->name : 'Product';
                 $errors[] = "{$name} is no longer available";
+                continue;
+            }
+
+            // When the cart item has a variant, check variant-level stock
+            if ($item->variant_id) {
+                $variant = $item->variant ?? ProductVariant::find($item->variant_id);
+                if ($variant && $variant->quantity < $item->quantity) {
+                    $variantLabel = trim("{$item->size} {$item->color}");
+                    $errors[] = "{$item->product->name}" . ($variantLabel ? " ({$variantLabel})" : "") . " has only {$variant->quantity} units available";
+                }
             } elseif ($item->product->quantity < $item->quantity) {
                 $errors[] = "{$item->product->name} has only {$item->product->quantity} in stock";
             }

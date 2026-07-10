@@ -5,11 +5,14 @@ namespace App\Repositories;
 use App\Models\PageView;
 use App\Models\UserSession;
 use App\Models\UserEvent;
+use App\Traits\CacheKeyRegistry;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Cache;
 
 class TrackingRepository
 {
+    use CacheKeyRegistry;
+
     public function endSession(string $sessionId): void
     {
         UserSession::where('session_id', $sessionId)->update(['end_time' => now(), 'is_active' => false]);
@@ -17,7 +20,7 @@ class TrackingRepository
 
     public function getPageViewsStats(): array
     {
-        return Cache::remember('tracking_pageview_stats', 300, function () {
+        return $this->cacheWithTracking('tracking_pageview_stats', 300, function () {
             return [
                 'total' => PageView::count(),
                 'today' => PageView::whereDate('created_at', today())->count(),
@@ -28,7 +31,7 @@ class TrackingRepository
 
     public function getActiveSessions(): int
     {
-        return Cache::remember('tracking_active_sessions', 60, function () {
+        return $this->cacheWithTracking('tracking_active_sessions', 60, function () {
             return UserSession::where('is_active', true)
                 ->where('start_time', '>=', now()->subHours(2))
                 ->count();
@@ -37,7 +40,7 @@ class TrackingRepository
 
     public function getTopPages(int $limit = 10): Collection
     {
-        return Cache::remember('tracking_top_pages', 300, function () use ($limit) {
+        return $this->cacheWithTracking('tracking_top_pages', 300, function () use ($limit) {
             return PageView::select('url')
                 ->selectRaw('COUNT(*) as views')
                 ->groupBy('url')

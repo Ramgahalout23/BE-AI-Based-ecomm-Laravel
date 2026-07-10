@@ -51,6 +51,8 @@ use App\Http\Controllers\Api\WebhookController;
 use App\Http\Controllers\Api\DocsController;
 use App\Http\Controllers\Api\HomepageController;
 use App\Http\Controllers\Api\AppInitController;
+use App\Http\Controllers\Api\SavedDesignController;
+use App\Http\Controllers\Api\CustomDesignController;
 
 Route::prefix('v1')->group(function () {
     // Consolidated app initialization — replaces 8+ individual API calls
@@ -230,6 +232,9 @@ Route::prefix('v1')->group(function () {
     Route::post('/checkout/coupon', [CheckoutController::class, 'applyCoupon']);
     Route::delete('/checkout/coupon', [CheckoutController::class, 'removeCoupon']);
 
+    // ── Public Custom Design Upload (supports guest users uploading designs before checkout) ──
+    Route::post('/custom-designs/upload', [CustomDesignController::class, 'uploadDesignImage']);
+
     // ── Authenticated User Routes ──
     Route::middleware('auth:sanctum')->group(function () {
         // ── SMS Routes ──
@@ -268,6 +273,18 @@ Route::prefix('v1')->group(function () {
                         Route::get('/recently-viewed', [RecentlyViewedController::class, 'index']);
                         Route::post('/recently-viewed', [RecentlyViewedController::class, 'store']);
 
+                        // ── Saved T-Shirt Designs (Customizer) ──
+                        Route::get('/customizer/designs', [SavedDesignController::class, 'index']);
+                        Route::post('/customizer/designs', [SavedDesignController::class, 'store']);
+                        Route::get('/customizer/designs/{id}', [SavedDesignController::class, 'show']);
+                        Route::put('/customizer/designs/{id}', [SavedDesignController::class, 'update']);
+                        Route::delete('/customizer/designs/{id}', [SavedDesignController::class, 'destroy']);
+                        Route::post('/customizer/upload', [SavedDesignController::class, 'uploadDesignImage']);
+
+                        // ── Custom Design Orders ──
+                        Route::get('/custom-designs/user', [CustomDesignController::class, 'userDesigns']);
+                        Route::post('/custom-designs', [CustomDesignController::class, 'store']);
+
         // ── Cart Merge ──
         Route::post('/cart/merge', [CartController::class, 'mergeCart']);
 
@@ -277,6 +294,11 @@ Route::prefix('v1')->group(function () {
         Route::get('/notifications/type/{type}', [NotificationController::class, 'getNotificationsByType']);
         Route::get('/notifications/stats', [NotificationController::class, 'getNotificationStats']);
 
+        // ── Wishlist Sharing (must be BEFORE generic /{productId} routes to avoid route shadowing) ──
+        Route::post('/wishlist/share', [WishlistController::class, 'share']);
+        Route::delete('/wishlist/share', [WishlistController::class, 'unshare']);
+        Route::get('/wishlist/share', [WishlistController::class, 'shareStatus']);
+
         Route::get('/wishlist', [WishlistController::class, 'index']);
         Route::post('/wishlist', [WishlistController::class, 'store']);
         Route::delete('/wishlist/{productId}', [WishlistController::class, 'destroy']);
@@ -285,11 +307,6 @@ Route::prefix('v1')->group(function () {
         Route::post('/wishlist/{productId}/move-to-cart', [WishlistController::class, 'moveToCart']);
         Route::get('/wishlist/check/{productId}', [WishlistController::class, 'check']);
         Route::get('/wishlist/count', [WishlistController::class, 'count']);
-
-        // ── Wishlist Sharing ──
-        Route::post('/wishlist/share', [WishlistController::class, 'share']);
-        Route::delete('/wishlist/share', [WishlistController::class, 'unshare']);
-        Route::get('/wishlist/share', [WishlistController::class, 'shareStatus']);
 
         Route::post('/reviews', [ReviewController::class, 'store']);
         Route::put('/reviews/{id}', [ReviewController::class, 'update']);
@@ -396,6 +413,13 @@ Route::prefix('v1')->group(function () {
         require __DIR__.'/admin/marketing.php';
         require __DIR__.'/admin/content.php';
         require __DIR__.'/admin/system.php';
+
+        // ── Custom Designs (admin management) ──
+        Route::get('/custom-designs/stats', [CustomDesignController::class, 'stats']);
+        Route::get('/custom-designs', [CustomDesignController::class, 'index']);
+        Route::get('/custom-designs/{id}', [CustomDesignController::class, 'show']);
+        Route::patch('/custom-designs/{id}/status', [CustomDesignController::class, 'updateStatus']);
+        Route::patch('/custom-designs/{id}/notes', [CustomDesignController::class, 'updateNotes']);
     });
 
 });

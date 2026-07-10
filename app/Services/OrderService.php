@@ -5,17 +5,18 @@ namespace App\Services;
 use App\Repositories\OrderRepository;
 use App\Repositories\CartRepository;
 use App\Exceptions\AppError;
-use App\Services\SocketService;
-use App\Services\NotificationService;
-use App\Services\EmailService;
-use App\Services\SMSService;
-use App\Services\NotificationTemplateService;
-use App\Services\WebhookService;
+use App\Models\CustomDesign;
 use App\Models\Product;
 use App\Models\ProductVariant;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
+
+/**
+ * UUID for the Custom T-Shirt product — must match CheckoutController::CUSTOM_TEE_PRODUCT_ID
+ * and the product created in the 2026_07_08_000010_create_custom_tee_product migration.
+ */
+const CUSTOM_TEE_PRODUCT_ID = 'c5b8e3f0-3a1c-4b7e-9d6f-1a2b3c4d5e6f';
 
 class OrderService
 {
@@ -32,16 +33,10 @@ class OrderService
 
     public function __construct(
         protected OrderRepository $orderRepository,
-        protected CartRepository $cartRepository,
-        protected SocketService $socketService,
-        protected NotificationService $notificationService,
-        protected EmailService $emailService,
-        protected SMSService $smsService,
-        protected NotificationTemplateService $notificationTemplateService,
-        protected WebhookService $webhookService
+        protected CartRepository $cartRepository
     ) {}
 
-    public function createOrder(string $userId, array $data): array
+    public function createOrder(string $userId, array $data, ?Collection $preloadedProducts = null, ?Collection $preloadedVariants = null): array
     {
         if (empty($data['items'])) {
             throw AppError::validation('Order must contain at least one item');
@@ -61,12 +56,15 @@ class OrderService
         }
 
         // Pre-load variants and products for all items in the order (avoid N+1)
-        $productIds = collect($data['items'])->pluck('product_id')->unique()->toArray();
-        $variantsByProduct = ProductVariant::whereIn('product_id', $productIds)
+        // Accept pre-loaded data from CheckoutController to eliminate redundant queries
+        $productIds = collect($data['items'])->pluck('product_id')->unique()
+            ->reject(fn($id) => $id === CUSTOM_TEE_PRODUCT_ID)
+            ->toArray();
+        $variantsByProduct = $preloadedVariants ?? ProductVariant::whereIn('product_id', $productIds)
             ->orderBy('quantity', 'desc')
             ->get()
             ->groupBy('product_id');
-        $productsById = Product::whereIn('id', $productIds)->get()->keyBy('id');
+        $productsById = $preloadedProducts ?? Product::whereIn('id', $productIds)->get()->keyBy('id');
 
         // Wrap all DB writes in a transaction for atomicity (matching TS CheckoutService)
         $order = DB::transaction(function () use ($data, $userId, $total, $orderNumber, $shippingAddressId, $variantsByProduct, $productsById) {
@@ -90,8 +88,25 @@ class OrderService
             $variantDeductions = [];  // [variantId => quantity]
             $productDeductions = [];  // [productId => quantity]
 
-            foreach ($data['items'] as $item) {
+            foreach ($data['items'] as $itemIndex => $item) {
                 $variantId = null;
+                $isCustomTee = $item['product_id'] === CUSTOM_TEE_PRODUCT_ID;
+
+                // Custom tees are print-on-demand — no stock to check or deduct
+                if ($isCustomTee) {
+                    $orderItemsData[] = [
+                        'order_id' => $order->id,
+                        'user_id' => $userId,
+                        'product_id' => $item['product_id'],
+                        'variant_id' => null,
+                        'quantity' => $item['quantity'],
+                        'price' => $item['price'],
+                        'total' => ($item['price'] ?? 0) * ($item['quantity'] ?? 1),
+                        'item_index' => $itemIndex,
+                    ];
+                    continue;
+                }
+
                 $variants = $variantsByProduct->get($item['product_id']);
 
                 if ($variants && $variants->isNotEmpty()) {
@@ -127,6 +142,7 @@ class OrderService
                     'quantity' => $item['quantity'],
                     'price' => $item['price'],
                     'total' => ($item['price'] ?? 0) * ($item['quantity'] ?? 1),
+                    'item_index' => $itemIndex,
                 ];
             }
 
@@ -173,66 +189,45 @@ class OrderService
             // Clear cart within transaction
             $this->cartRepository->clearCart($userId);
 
+            // Bump products cache version so product detail pages refetch fresh stock counts
+            Cache::increment('products_cache_version');
+
+            // Clear homepage cached data so featured/new/bestseller lists reflect this new order
+            Cache::forget('homepage_all');
+
+            // Clear admin dashboard cache so metrics (total orders, revenue, etc.) reflect this new order immediately
+            app(\App\Repositories\AdminRepository::class)->clearDashboardCache();
+
             return $order;
         });
 
-        // ── Webhook: order.created (queued) ──
-        \App\Jobs\DispatchWebhookJob::dispatch('order.created', [
-            'order_id' => $order->id,
-            'order_number' => $order->order_number,
-            'user_id' => $userId,
-            'total' => (float) $total,
-            'status' => $order->status,
-            'items_count' => count($data['items']),
-        ]);
+        // ── Dispatch all post-order processing to a single queue job ──
+        // This moves ALL email/SMS/webhook/socket/notification work off the critical path,
+        // so the HTTP response returns immediately after the transaction completes.
+        \App\Jobs\ProcessOrderAfterCreation::dispatch(
+            $order->id,
+            $userId,
+            $data['items'],
+            (float) $total,
+            $data['payment_method'] ?? null
+        );
 
-        // Load the user once — all notification helpers share the same user
-        $user = \App\Models\User::find($userId);
+        // Return the created order with images loaded (use load() instead of fresh()->load()
+        // to avoid an unnecessary SELECT — we just created this order in the transaction)
+        $orderArray = $order->load('items.product.images', 'items.variant', 'payment')->toArray();
 
-        // Send order confirmation email (queued)
-        if ($user) {
-            $this->sendOrderConfirmationEmail($order, $user, $data['items'], $total);
-        }
-
-        // Send order confirmation SMS (queued)
-        if ($user) {
-            $this->sendOrderConfirmationSMS($order, $user, $total);
-        }
-
-        // If COD auto-confirmed, also send status update notifications
-        if (($data['payment_method'] ?? '') === 'COD' && $user) {
-            $this->sendOrderStatusUpdateSMS($order, $user, 'CONFIRMED');
-            $this->sendOrderStatusUpdateEmail($order, $user, 'CONFIRMED');
-        }
-
-        // Emit real-time socket event for admin sidebar badge updates (queued)
-        \App\Jobs\EmitSocketEventJob::dispatch('order:created', [
-            'orderId' => $order->id,
-            'orderNumber' => $order->order_number,
-            'status' => $order->status,
-            'userId' => $userId,
-            'timestamp' => now()->toIso8601String(),
-            'summary' => ['total' => (float) $total],
-        ]);
-
-        // Also fire the local Laravel event for internal listeners
-        try {
-            event(new \App\Events\OrderCreated(['orderId' => $order->id, 'orderNumber' => $order->order_number]));
-        } catch (\Exception $e) {
-            Log::error('Failed to fire OrderCreated event', ['error' => $e->getMessage()]);
-        }
-
-        // Return the created order with images loaded and imageUrl mapped (for consistency,
-        // though the checkout page navigates to /order/thank-you/{id} immediately)
-        $orderArray = $order->fresh()->load('items.product.images', 'payment')->toArray();
-
-        // Map imageUrl onto each item, matching getOrder() and getUserOrders() patterns
+        // Set imageUrl on each item from product images (lightweight mapping, no extra queries)
+        // Custom designs are created AFTER this call by CheckoutController, so they handle
+        // their own image injection. But we need imageUrl for real product items.
         if (isset($orderArray['items']) && is_array($orderArray['items'])) {
             foreach ($orderArray['items'] as &$item) {
                 $item['imageUrl'] = $item['product']['images'][0]['url'] ?? $item['image_url'] ?? null;
             }
             unset($item);
         }
+
+        // Cache the order so the thank-you page GET /orders/{id} hits warm cache immediately
+        Cache::put('order_' . $order->id, $orderArray, now()->addMinutes(3));
 
         return $orderArray;
     }
@@ -297,13 +292,13 @@ class OrderService
             foreach ($data['items'] as &$item) {
                 $item['variantId']   = $item['variant_id'] ?? null;
                 $item['productName'] = $item['product']['name'] ?? $item['name'] ?? 'Product';
-                $item['imageUrl']    = $item['product']['images'][0]['url'] ?? $item['image_url'] ?? null;
                 $item['createdAt']   = $item['created_at'] ?? null;
-                if (isset($item['product']) && is_array($item['product'])) {
-                    $item['product']['createdAt'] = $item['product']['created_at'] ?? null;
-                }
             }
             unset($item);
+
+            // Map custom design data, imageUrl, size/color, and product.createdAt
+            // onto items via shared helper
+            $this->mapItemsWithCustomDesigns($data, $order);
         }
 
         // ── Shipping Address (toArray() keys use the relationship method name = camelCase) ──
@@ -331,6 +326,69 @@ class OrderService
     }
 
     /**
+     * Load custom designs for an order and map onto items by item_index.
+     * Used by createOrder() and any method that returns items.
+     */
+    private function mapItemsWithCustomDesigns(array &$orderArray, $order): void
+    {
+        if (!isset($orderArray['items']) || !is_array($orderArray['items'])) {
+            return;
+        }
+
+        // Use eager loaded relation if available, otherwise query
+        $customDesigns = $order->relationLoaded('customDesigns')
+            ? $order->customDesigns->keyBy('item_index')
+            : CustomDesign::where('order_id', $order->id)
+                ->get()
+                ->keyBy('item_index');
+
+        $this->mapItemsFromCustomDesigns($orderArray['items'], $customDesigns);
+    }
+
+    /**
+     * Map item fields (imageUrl, size/color) and custom design data onto items
+     * using a pre-loaded collection of CustomDesign records keyed by item_index.
+     *
+     * Used by mapItemsWithCustomDesigns() (single order) and getUserOrders()
+     * (batch-loaded designs for multiple orders).
+     */
+    private function mapItemsFromCustomDesigns(array &$items, Collection $customDesigns): void
+    {
+        foreach ($items as &$item) {
+            $item['imageUrl'] = $item['product']['images'][0]['url'] ?? $item['image_url'] ?? null;
+            // Map size/color from variant attributes
+            if (!empty($item['variant']) && !empty($item['variant']['attributes'])) {
+                $attrs = $item['variant']['attributes'];
+                $item['size'] = is_array($attrs) ? ($attrs['size'] ?? $attrs['Size'] ?? null) : null;
+                $item['color'] = is_array($attrs) ? ($attrs['color'] ?? $attrs['Color'] ?? null) : null;
+            }
+
+            // Map custom design data by item_index
+            $idx = $item['item_index'] ?? null;
+            if ($idx !== null && $customDesigns->has($idx)) {
+                $cd = $customDesigns->get($idx);
+                $item['customDesign'] = [
+                    'design_file_url' => $cd->design_file_url,
+                    'design_notes' => $cd->design_notes,
+                    'placement' => $cd->placement,
+                    'color' => $cd->color,
+                    'size' => $cd->size,
+                    'design_filename' => $cd->design_filename,
+                ];
+                // Set item.image to the front design URL for existing admin frontend
+                if ($cd->design_file_url) {
+                    $item['image'] = $cd->design_file_url;
+                }
+            }
+
+            if (isset($item['product']) && is_array($item['product'])) {
+                $item['product']['createdAt'] = $item['product']['created_at'] ?? null;
+            }
+        }
+        unset($item);
+    }
+
+    /**
      * Map snake_case address fields to camelCase.
      */
     private function mapOrderAddress(array $addr): array
@@ -352,13 +410,8 @@ class OrderService
 
         $data = $order->toArray();
 
-        // Map imageUrl onto items for consistency
-        if (isset($data['items']) && is_array($data['items'])) {
-            foreach ($data['items'] as &$item) {
-                $item['imageUrl'] = $item['product']['images'][0]['url'] ?? $item['image_url'] ?? null;
-            }
-            unset($item);
-        }
+        // Map imageUrl, size/color, and custom design data onto items via shared helper
+        $this->mapItemsWithCustomDesigns($data, $order);
 
         return $data;
     }
@@ -368,21 +421,40 @@ class OrderService
         $paginator = $this->orderRepository->getUserOrders($userId, $filters);
         $result = $paginator->toArray();
 
+        // ── Batch-load custom designs for ALL orders in this page with a single query ──
+        $orderIds = [];
+        if (isset($result['data']) && is_array($result['data'])) {
+            foreach ($result['data'] as $order) {
+                if (isset($order['id'])) {
+                    $orderIds[] = $order['id'];
+                }
+            }
+        }
+        $allCustomDesigns = !empty($orderIds)
+            ? CustomDesign::whereIn('order_id', $orderIds)->get()->groupBy('order_id')
+            : collect();
+
         // Map snake_case DB fields to camelCase for frontend and add imageUrl to items
         if (isset($result['data']) && is_array($result['data'])) {
-            $result['data'] = array_map(function ($order) {
+            $result['data'] = array_map(function ($order) use ($allCustomDesigns) {
                 $order['createdAt']   = $order['created_at'] ?? null;
                 $order['totalAmount'] = $order['total'] ?? 0;
                 $order['orderNumber'] = $order['order_number'] ?? null;
 
-                // Map imageUrl, productName, productId onto items for consistency with getOrder()
+                // Look up pre-loaded custom designs for this order, keyed by item_index
+                $customDesigns = $allCustomDesigns->get($order['id'])?->keyBy('item_index') ?? collect();
+
+                // Map imageUrl, size/color, productName, productId, and custom design
+                // data onto items via shared helper (uses pre-loaded designs)
                 if (isset($order['items']) && is_array($order['items'])) {
                     foreach ($order['items'] as &$item) {
-                        $item['imageUrl']    = $item['product']['images'][0]['url'] ?? $item['image_url'] ?? null;
                         $item['productName'] = $item['product']['name'] ?? $item['name'] ?? null;
                         $item['productId']   = $item['product_id'] ?? null;
                     }
                     unset($item);
+
+                    // Map imageUrl, size/color, customDesign, and product.createdAt
+                    $this->mapItemsFromCustomDesigns($order['items'], $customDesigns);
                 }
 
                 return $order;
@@ -407,13 +479,8 @@ class OrderService
             $data['userId']      = $data['user_id'] ?? null;
             $data['totalAmount'] = $data['total'] ?? 0;
 
-            // Map imageUrl onto items for consistency
-            if (isset($data['items']) && is_array($data['items'])) {
-                foreach ($data['items'] as &$item) {
-                    $item['imageUrl'] = $item['product']['images'][0]['url'] ?? $item['image_url'] ?? null;
-                }
-                unset($item);
-            }
+            // Map imageUrl, size/color, and custom design image onto items via shared helper
+            $this->mapItemsWithCustomDesigns($data, $order);
 
             return $data;
         });
@@ -442,7 +509,7 @@ class OrderService
         // Invalidate cache AFTER the DB update to avoid a race where stale data is re-cached
         Cache::forget('order_' . $orderId);
 
-        // ── Webhook: order.status_updated (queued) ──
+        // ── Dispatch webhook + notifications asynchronously ──
         \App\Jobs\DispatchWebhookJob::dispatch('order.status_updated', [
             'order_id' => $order->id,
             'order_number' => $order->order_number,
@@ -451,28 +518,16 @@ class OrderService
             'user_id' => $order->user_id,
         ]);
 
-        // Load the user once — both notification helpers share the same user
-        $user = \App\Models\User::find($updated->user_id);
+        // Queue SMS + email notifications so the admin response returns immediately
+        \App\Jobs\ProcessOrderStatusUpdate::dispatch(
+            $orderId,
+            $newStatus,
+            $order->status
+        );
 
-        // Send status update SMS (queued)
-        if ($user) {
-            $this->sendOrderStatusUpdateSMS($updated, $user, $newStatus);
-        }
+        $updatedArray = $updated->load('items.product.images', 'items.variant')->toArray();
 
-        // Send status update email (queued)
-        if ($user) {
-            $this->sendOrderStatusUpdateEmail($updated, $user, $newStatus);
-        }
-
-        $updatedArray = $updated->load('items.product.images')->toArray();
-
-        // Map imageUrl onto items for consistency
-        if (isset($updatedArray['items']) && is_array($updatedArray['items'])) {
-            foreach ($updatedArray['items'] as &$item) {
-                $item['imageUrl'] = $item['product']['images'][0]['url'] ?? $item['image_url'] ?? null;
-            }
-            unset($item);
-        }
+        $this->mapItemsWithCustomDesigns($updatedArray, $updated);
 
         return $updatedArray;
     }
@@ -493,6 +548,10 @@ class OrderService
         $productRestores = [];  // [productId => quantity]
 
         foreach ($orderItems as $item) {
+            // Custom tees are print-on-demand — no stock to restore
+            if ($item->product_id === CUSTOM_TEE_PRODUCT_ID) {
+                continue;
+            }
             if ($item->variant_id) {
                 $variantRestores[$item->variant_id] = ($variantRestores[$item->variant_id] ?? 0) + $item->quantity;
             } else {
@@ -544,16 +603,18 @@ class OrderService
             'reason' => $reason,
         ]);
 
-        // Load items with images on the fresh instance and map imageUrl for consistency
-        $updated->load('items.product.images');
+        // Queue SMS + email cancellation notifications (async)
+        \App\Jobs\ProcessOrderStatusUpdate::dispatch(
+            $orderId,
+            'CANCELLED',
+            $order->status
+        );
+
+        // Load items with images and variant on the fresh instance and map for consistency
+        $updated->load('items.product.images', 'items.variant');
         $updatedArray = $updated->toArray();
 
-        if (isset($updatedArray['items']) && is_array($updatedArray['items'])) {
-            foreach ($updatedArray['items'] as &$item) {
-                $item['imageUrl'] = $item['product']['images'][0]['url'] ?? $item['image_url'] ?? null;
-            }
-            unset($item);
-        }
+        $this->mapItemsWithCustomDesigns($updatedArray, $updated);
 
         return $updatedArray;
     }
@@ -708,142 +769,7 @@ class OrderService
         return ['order_id' => $orderId, 'reason' => $reason, 'status' => 'PENDING', 'message' => 'Return request submitted'];
     }
 
-    /**
-     * Send order confirmation email asynchronously (matching TS behavior)
-     */
-    private function sendOrderConfirmationEmail($order, \App\Models\User $user, array $items, float $total): void
-    {
-        try {
-            $emailEnabled = $this->emailService->isEmailEnabled();
-            $templateActive = $this->emailService->isTemplateActive('orderConfirmation');
-            if (!$emailEnabled || !$templateActive) return;
-
-            // Get product names
-            $productIds = array_column($items, 'product_id');
-            $products = Product::whereIn('id', $productIds)->pluck('name', 'id')->toArray();
-
-            $formattedItems = array_map(function ($item) use ($products) {
-                return [
-                    'name' => $products[$item['product_id']] ?? 'Product',
-                    'quantity' => $item['quantity'],
-                    'price' => $item['price'],
-                    'total' => ($item['price'] ?? 0) * ($item['quantity'] ?? 1),
-                ];
-            }, $items);
-
-            $this->emailService->sendOrderConfirmation(
-                $user->email,
-                $user->first_name . ' ' . $user->last_name,
-                [
-                    'orderNumber' => $order->order_number,
-                    'customerName' => $user->first_name . ' ' . $user->last_name,
-                    'items' => $formattedItems,
-                    'subtotal' => $total,
-                    'shippingCost' => 0,
-                    'tax' => 0,
-                    'discount' => 0,
-                    'total' => $total,
-                    'shippingAddress' => 'N/A',
-                    'paymentMethod' => 'N/A',
-                ]
-            );
-
-            // Create in-app notification from template
-            $notifRendered = $this->notificationTemplateService->renderTemplate('notif_order_confirmed', [
-                'customerName' => $user->first_name . ' ' . $user->last_name,
-                'orderNumber' => $order->order_number,
-                'total' => number_format($total, 2),
-            ]);
-            $notifTitle = ($notifRendered['rendered'] ?? false) ? $notifRendered['title'] : 'Order Confirmed 🎉';
-            $notifMessage = ($notifRendered['rendered'] ?? false) ? $notifRendered['message'] : "Your order {$order->order_number} has been placed successfully. Total: $" . number_format($total, 2);
-
-            $this->notificationService->create(
-                $order->user_id,
-                'ORDER',
-                $notifTitle,
-                $notifMessage,
-                ['orderId' => $order->id, 'orderNumber' => $order->order_number]
-            );
-        } catch (\Exception $e) {
-            Log::error('Failed to send order confirmation email', ['error' => $e->getMessage()]);
-        }
-    }
-
-    /**
-     * Send order confirmation SMS asynchronously (matching TS behavior)
-     */
-    private function sendOrderConfirmationSMS($order, \App\Models\User $user, float $total): void
-    {
-        try {
-            $smsEnabled = $this->smsService->isSmsEnabled();
-            if (!$smsEnabled) return;
-
-            if (!$user->phone_number) return;
-
-            // Check if template is active before sending
-            $templateActive = $this->notificationTemplateService->isTemplateActive('sms_order_confirmation');
-            if (!$templateActive) return;
-
-            $this->smsService->sendOrderConfirmationSMS(
-                $user->phone_number,
-                $user->first_name . ' ' . $user->last_name,
-                $order->order_number,
-                $total
-            );
-        } catch (\Exception $e) {
-            Log::error('Failed to send order confirmation SMS', ['error' => $e->getMessage()]);
-        }
-    }
-
-    /**
-     * Send order status update SMS asynchronously (matching TS behavior)
-     */
-    private function sendOrderStatusUpdateSMS($order, \App\Models\User $user, string $newStatus): void
-    {
-        try {
-            $smsEnabled = $this->smsService->isSmsEnabled();
-            if (!$smsEnabled) return;
-
-            if (!$user->phone_number) return;
-
-            // Check the specific status template is active
-            $templateId = match ($newStatus) {
-                'SHIPPED' => 'sms_order_shipped',
-                'DELIVERED' => 'sms_order_delivered',
-                'CANCELLED' => 'sms_order_cancelled',
-                default => 'sms_order_status_update',
-            };
-            if (!$this->notificationTemplateService->isTemplateActive($templateId)) return;
-
-            $this->smsService->sendOrderStatusUpdateSMS(
-                $user->phone_number,
-                $user->first_name . ' ' . $user->last_name,
-                $order->order_number,
-                $newStatus
-            );
-        } catch (\Exception $e) {
-            Log::error('Failed to send order status update SMS', ['error' => $e->getMessage()]);
-        }
-    }
-
-    /**
-     * Send order status update email asynchronously (matching TS behavior)
-     */
-    private function sendOrderStatusUpdateEmail($order, \App\Models\User $user, string $newStatus): void
-    {
-        try {
-            $emailEnabled = $this->emailService->isEmailEnabled();
-            $templateActive = $this->emailService->isTemplateActive('orderStatusUpdate');
-            if (!$emailEnabled || !$templateActive) return;
-
-            $this->emailService->sendOrderStatusUpdate(
-                $user->email,
-                $user->first_name . ' ' . $user->last_name,
-                $order->order_number,
-                $newStatus
-            );
-        } catch (\Exception $e) {
-            Log::error('Failed to send order status update email', ['error' => $e->getMessage()]);
-        }
-    }
+    // All post-order notification logic has been moved to queued jobs:
+    // - ProcessOrderAfterCreation (for new orders: email, SMS, webhooks, socket, events)
+    // - ProcessOrderStatusUpdate (for status changes: SMS, email)
 }

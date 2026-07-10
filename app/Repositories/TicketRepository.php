@@ -42,15 +42,10 @@ class TicketRepository extends BaseRepository
             });
         }
 
-        $total = $query->count();
-
-        $items = $query->latest()
-            ->skip(($page - 1) * $limit)
-            ->take($limit)
-            ->get();
+        $paginator = $query->latest()->paginate($limit, ['*'], 'page', $page);
 
         // Map each item to include camelCase fields expected by frontend
-        $mappedItems = $items->map(function ($ticket) {
+        $mappedItems = collect($paginator->items())->map(function ($ticket) {
             $data = $ticket->toArray();
             $data['createdAt'] = $data['created_at'] ?? null;
             $data['updatedAt'] = $data['updated_at'] ?? null;
@@ -74,10 +69,10 @@ class TicketRepository extends BaseRepository
 
         return [
             'items' => $mappedItems->toArray(),
-            'page' => $page,
-            'limit' => $limit,
-            'total' => $total,
-            'total_pages' => (int) ceil($total / $limit),
+            'page' => $paginator->currentPage(),
+            'limit' => $paginator->perPage(),
+            'total' => $paginator->total(),
+            'total_pages' => $paginator->lastPage(),
         ];
     }
 
@@ -89,19 +84,14 @@ class TicketRepository extends BaseRepository
         $query = SupportTicket::with(['messages' => fn($q) => $q->orderBy('created_at')])
             ->where('user_id', $userId);
 
-        $total = $query->count();
-
-        $items = $query->latest()
-            ->skip(($page - 1) * $limit)
-            ->take($limit)
-            ->get();
+        $paginator = $query->latest()->paginate($limit, ['*'], 'page', $page);
 
         return [
-            'items' => $items,
-            'page' => $page,
-            'limit' => $limit,
-            'total' => $total,
-            'total_pages' => (int) ceil($total / $limit),
+            'items' => $paginator->items(),
+            'page' => $paginator->currentPage(),
+            'limit' => $paginator->perPage(),
+            'total' => $paginator->total(),
+            'total_pages' => $paginator->lastPage(),
         ];
     }
 
