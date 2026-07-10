@@ -32,7 +32,7 @@ class PromotionRepository extends BaseRepository
             $with = ['products:id,name,slug,price', 'categories:id,name,slug'];
 
             // 1) Promotions with no end date (permanent/evergreen)
-            $noEndDate = Promotion::select('id', 'title', 'description', 'image_url', 'discount', 'type', 'status', 'start_date', 'end_date', 'priority', 'is_active', 'coupon_code')
+            $noEndDate = Promotion::select('id', 'title', 'description', 'image_url', 'discount', 'type', 'status', 'start_date', 'end_date', 'priority', 'is_active', 'coupon_code', 'offer_badge', 'offer_highlight', 'offer_tagline', 'offer_theme', 'auto_apply')
                 ->with($with)
                 ->where('is_active', true)
                 ->whereNull('end_date')
@@ -40,7 +40,7 @@ class PromotionRepository extends BaseRepository
                 ->get();
 
             // 2) Promotions with a future end date
-            $activeDateRange = Promotion::select('id', 'title', 'description', 'image_url', 'discount', 'type', 'status', 'start_date', 'end_date', 'priority', 'is_active', 'coupon_code')
+            $activeDateRange = Promotion::select('id', 'title', 'description', 'image_url', 'discount', 'type', 'status', 'start_date', 'end_date', 'priority', 'is_active', 'coupon_code', 'offer_badge', 'offer_highlight', 'offer_tagline', 'offer_theme', 'auto_apply')
                 ->with($with)
                 ->where('is_active', true)
                 ->where('end_date', '>=', now())

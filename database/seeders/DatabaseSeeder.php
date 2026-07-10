@@ -107,6 +107,7 @@ class DatabaseSeeder extends Seeder
         $this->call(CuratedLookSeeder::class);
         $this->call(TranslationSeeder::class);
         $this->call(NotificationSeeder::class);
+        $this->call(StoreOfferSeeder::class);
 
         // Product-dependent seeders — must run after ProductSeeder
         $this->call(ProductSeeder::class);

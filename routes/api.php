@@ -188,6 +188,7 @@ Route::prefix('v1')->group(function () {
 
     // Public Promotion Routes
     Route::get('/promotions', [PromotionController::class, 'index']);
+    Route::get('/store-offers', [PromotionController::class, 'storeOffers']);
 
     // Public Shared Wishlist Route
     Route::get('/shared-wishlist/{token}', [WishlistController::class, 'viewShared']);

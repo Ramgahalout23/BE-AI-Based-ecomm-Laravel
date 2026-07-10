@@ -12,11 +12,13 @@ class Promotion extends Model
     protected $fillable = [
         'title', 'description', 'type', 'image_url', 'link_url', 'discount', 'status',
         'start_date', 'end_date', 'priority', 'is_active', 'show_on_mobile', 'show_on_desktop',
-        'min_purchase', 'max_discount', 'coupon_code', 'created_by'
+        'min_purchase', 'max_discount', 'coupon_code', 'created_by',
+        'offer_badge', 'offer_highlight', 'offer_tagline', 'offer_theme', 'auto_apply'
     ];
     protected $casts = [
         'discount' => 'decimal:2', 'min_purchase' => 'decimal:2', 'max_discount' => 'decimal:2',
         'is_active' => 'boolean', 'show_on_mobile' => 'boolean', 'show_on_desktop' => 'boolean',
+        'auto_apply' => 'boolean',
         'start_date' => 'datetime', 'end_date' => 'datetime'
     ];
 

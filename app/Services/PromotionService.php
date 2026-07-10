@@ -19,6 +19,11 @@ class PromotionService
         'min_purchase'    => 'minPurchase',
         'max_discount'    => 'maxDiscount',
         'coupon_code'     => 'couponCode',
+        'offer_badge'     => 'offerBadge',
+        'offer_highlight' => 'offerHighlight',
+        'offer_tagline'   => 'offerTagline',
+        'offer_theme'     => 'offerTheme',
+        'auto_apply'      => 'autoApply',
         'created_by'      => 'createdBy',
     ];
 

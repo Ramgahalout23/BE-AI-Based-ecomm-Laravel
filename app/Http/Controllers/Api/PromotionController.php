@@ -20,6 +20,11 @@ class PromotionController extends Controller
         'isActive' => 'is_active',
         'productIds' => 'product_ids',
         'categoryIds' => 'category_ids',
+        'offerBadge' => 'offer_badge',
+        'offerHighlight' => 'offer_highlight',
+        'offerTagline' => 'offer_tagline',
+        'offerTheme' => 'offer_theme',
+        'autoApply' => 'auto_apply',
     ];
     public function __construct(protected PromotionService $promotionService) {}
 
@@ -76,6 +81,11 @@ class PromotionController extends Controller
                 'product_ids.*' => 'string',
                 'category_ids' => 'nullable|array',
                 'category_ids.*' => 'string',
+                'offer_badge' => 'nullable|string|max:255',
+                'offer_highlight' => 'nullable|string|max:255',
+                'offer_tagline' => 'nullable|string|max:255',
+                'offer_theme' => 'nullable|string|max:100',
+                'auto_apply' => 'nullable|boolean',
             ])->validate();
 
             $productIds = $validated['product_ids'] ?? [];
@@ -110,6 +120,10 @@ class PromotionController extends Controller
                 'product_ids.*' => 'string',
                 'category_ids' => 'nullable|array',
                 'category_ids.*' => 'string',
+                'offer_badge' => 'nullable|string|max:255',
+                'offer_highlight' => 'nullable|string|max:255',
+                'offer_tagline' => 'nullable|string|max:255',
+                'offer_theme' => 'nullable|string|max:100',
             ])->validate();
 
             // null = not provided (don't sync), [] = explicitly empty (clear all)
@@ -131,5 +145,27 @@ class PromotionController extends Controller
             $this->promotionService->delete($id);
             return response()->json(['success' => true, 'message' => 'Promotion deleted']);
         } catch (AppError $e) { return $e->render(); }
+    }
+
+    /**
+     * Get store-specific offers — promotions with offer display fields
+     * that can be shown as offer cards on product pages and cart.
+     *
+     * Shows promotions that have offerBadge/offerHighlight/offerTagline
+     * AND have auto_apply enabled (admin toggle).
+     *
+     * PromotionService::getActive() already returns camelCase-mapped associative arrays.
+     */
+    public function storeOffers(): JsonResponse
+    {
+        $active = $this->promotionService->getActive();
+
+        // Only return promotions that have offer display fields AND auto_apply enabled
+        $offers = array_values(array_filter($active, fn($p) =>
+            (!empty($p['offerBadge']) || !empty($p['offerHighlight']) || !empty($p['offerTagline']))
+            && !empty($p['autoApply'])
+        ));
+
+        return response()->json(['success' => true, 'data' => $offers]);
     }
 }

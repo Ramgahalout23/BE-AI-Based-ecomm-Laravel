@@ -22,7 +22,10 @@ class FlashSaleService
     ) {}
 
     /**
-     * Get applicable flash sale discounts for a set of cart items.
+     * Get applicable flash sale and store-wide discounts for a set of cart items.
+     *
+     * Also handles store-wide offers (promotions with offer_badge/offer_highlight/offer_tagline
+     * but NO linked products or categories). These apply to every item in the cart.
      *
      * Each item should have: product_id, quantity, price, and optionally category_id.
      * Returns structured data with per-item breakdown and total discount.
@@ -45,6 +48,7 @@ class FlashSaleService
         // Build lookup maps from the eager-loaded relationships
         $productPromotions = [];  // productId => [promotion, ...]
         $categoryPromotions = []; // categoryId => [promotion, ...]
+        $storeWidePromotions = []; // Promotions with no product/category links (apply to all)
 
         foreach ($promotions as $promotion) {
             // Check if this promotion has a discount that can be applied
@@ -62,9 +66,24 @@ class FlashSaleService
                 'minPurchase' => (float) ($promotion->min_purchase ?? 0),
                 'startDate' => $promotion->start_date?->toIso8601String(),
                 'endDate' => $promotion->end_date?->toIso8601String(),
+                'offerBadge' => $promotion->offer_badge,
+                'offerHighlight' => $promotion->offer_highlight,
+                'offerTagline' => $promotion->offer_tagline,
             ];
 
-            // Map product associations
+            $hasProducts = $promotion->products->isNotEmpty();
+            $hasCategories = $promotion->categories->isNotEmpty();
+
+            if (!$hasProducts && !$hasCategories) {
+                // Store-wide auto-apply offer — no specific product/category links.
+                // Only applies if admin has enabled the auto_apply toggle.
+                if (!empty($promotion->auto_apply)) {
+                    $storeWidePromotions[] = $promoData;
+                }
+                continue;
+            }
+
+            // Map product associations (for flash sales with linked products)
             foreach ($promotion->products as $product) {
                 $productPromotions[$product->id][] = $promoData;
             }
@@ -111,6 +130,13 @@ class FlashSaleService
                 }
             }
 
+            // Store-wide offers apply to ALL items
+            foreach ($storeWidePromotions as $promo) {
+                if (!isset($matchingPromos[$promo['id']])) {
+                    $matchingPromos[$promo['id']] = $promo + ['matchType' => 'store-wide'];
+                }
+            }
+
             if (empty($matchingPromos)) {
                 continue;
             }
@@ -145,12 +171,15 @@ class FlashSaleService
 
                 $totalDiscount += $bestDiscount;
 
-                // Track which flash sales were used
+                // Track which promotions were used
                 if (!isset($appliedFlashSales[$bestPromo['id']])) {
                     $appliedFlashSales[$bestPromo['id']] = [
                         'id' => $bestPromo['id'],
                         'title' => $bestPromo['title'],
                         'discountLabel' => $this->formatDiscountLabel($bestPromo),
+                        'offerBadge' => $bestPromo['offerBadge'] ?? null,
+                        'offerHighlight' => $bestPromo['offerHighlight'] ?? null,
+                        'offerTagline' => $bestPromo['offerTagline'] ?? null,
                     ];
                 }
             }
@@ -165,6 +194,9 @@ class FlashSaleService
 
     /**
      * Calculate the discount amount for a single item against a promotion.
+     *
+     * Supports PERCENTAGE, FLASH_SALE, SEASONAL (all treated as percentage-off),
+     * and FIXED discount types.
      */
     private function calculateItemDiscount(float $itemSubtotal, array $promotion): float
     {
@@ -180,7 +212,8 @@ class FlashSaleService
 
         $discount = 0;
 
-        if (strtoupper($type) === 'PERCENTAGE' || strtoupper($type) === 'FLASH_SALE') {
+        // SEASONAL, PERCENTAGE, and FLASH_SALE are all treated as percentage-off
+        if (in_array(strtoupper($type), ['PERCENTAGE', 'FLASH_SALE', 'SEASONAL', 'PRODUCT_LAUNCH', 'NEWSLETTER', 'LOYALTY_REWARD'], true)) {
             // Percentage-off discount
             $discount = $itemSubtotal * ($discountValue / 100);
         } elseif (strtoupper($type) === 'FIXED') {

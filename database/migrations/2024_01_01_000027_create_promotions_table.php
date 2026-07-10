@@ -27,6 +27,10 @@ return new class extends Migration
             $table->decimal('max_discount', 10, 2)->nullable();
             $table->string('coupon_code')->nullable()->unique();
             $table->string('created_by')->nullable();
+            $table->string('offer_badge')->nullable()->comment('Badge text for store offer cards (e.g. "BUY 2", "FREE GIFT")');
+            $table->string('offer_highlight')->nullable()->comment('Big highlight text for store offer cards (e.g. "GET 10% OFF", "EXTRA 10% OFF")');
+            $table->string('offer_tagline')->nullable()->comment('Small tagline for store offer cards (e.g. "Auto-applied at checkout")');
+            $table->string('offer_theme')->nullable()->comment('Color theme for store offer cards (e.g. "smart-deal", "prepaid-offer", "summer-bonus")');
             $table->timestamps();
 
             $table->index('type');
