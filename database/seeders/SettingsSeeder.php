@@ -54,6 +54,7 @@ class SettingsSeeder extends Seeder
             ['module' => 'ADS', 'key' => 'googleAdsDeveloperToken', 'value' => ''],
 
             // Section Toggles
+            ['module' => 'SITE', 'key' => 'salesEnabled', 'value' => 'true'],
             ['module' => 'SITE', 'key' => 'reelsEnabled', 'value' => 'true'],
             ['module' => 'SITE', 'key' => 'curatedLooksEnabled', 'value' => 'true'],
             ['module' => 'SITE', 'key' => 'reviewsEnabled', 'value' => 'true'],

@@ -23,6 +23,9 @@ class SettingsController extends Controller
     private function flushAppInitCache(): void
     {
         \Illuminate\Support\Facades\Cache::forget('app_init');
+        \Illuminate\Support\Facades\Cache::forget('homepage_all');
+        \Illuminate\Support\Facades\Cache::forget('promotions_active');
+        \Illuminate\Support\Facades\Cache::forget('settings_all');
         \Illuminate\Support\Facades\Cache::forget('setting_curatedLooksEnabled');
         \Illuminate\Support\Facades\Cache::forget('setting_reelsEnabled');
         \Illuminate\Support\Facades\Cache::forget('setting_reviewsEnabled');
@@ -31,7 +34,6 @@ class SettingsController extends Controller
         \Illuminate\Support\Facades\Cache::forget('smtp_settings');
         \Illuminate\Support\Facades\Cache::forget('store_name');
         \Illuminate\Support\Facades\Cache::forget('sms_enabled');
-        \Illuminate\Support\Facades\Cache::forget('homepage_all');
     }
 
     public function index(): JsonResponse

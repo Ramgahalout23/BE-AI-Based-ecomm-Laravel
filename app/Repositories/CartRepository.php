@@ -16,7 +16,7 @@ class CartRepository extends BaseRepository
     public function getUserCart(string $userId): Collection
     {
         return CartItem::with([
-            'product:id,name,slug,price,image_url,quantity,old_price,status',
+            'product:id,name,slug,price,quantity,old_price,status',
             'product.images:id,product_id,url',
             'variant:id,product_id,name,price,quantity',
         ])
@@ -31,7 +31,7 @@ class CartRepository extends BaseRepository
     public function getCartBySession(string $sessionId): Collection
     {
         return CartItem::with([
-            'product:id,name,slug,price,image_url,quantity,old_price,status',
+            'product:id,name,slug,price,quantity,old_price,status',
             'product.images:id,product_id,url',
             'variant:id,product_id,name,price,quantity',
         ])
@@ -99,7 +99,7 @@ class CartRepository extends BaseRepository
     public function findItemById(string $itemId): ?CartItem
     {
         return CartItem::with([
-            'product:id,name,slug,price,image_url,quantity,old_price,status',
+            'product:id,name,slug,price,quantity,old_price,status',
             'product.images:id,product_id,url',
             'variant:id,product_id,name,price,quantity',
         ])->find($itemId);
@@ -108,7 +108,7 @@ class CartRepository extends BaseRepository
     public function findByUserAndProduct(string $userId, string $productId): ?CartItem
     {
         return CartItem::with([
-            'product:id,name,slug,price,image_url,quantity,old_price,status',
+            'product:id,name,slug,price,quantity,old_price,status',
             'variant:id,product_id,name,price,quantity',
         ])
             ->where('user_id', $userId)
@@ -255,7 +255,7 @@ class CartRepository extends BaseRepository
     public function getCartTotal(string $userId): array
     {
         $items = CartItem::with([
-            'product:id,name,slug,price,image_url,quantity,old_price,status',
+            'product:id,name,slug,price,quantity,old_price,status',
             'product.images:id,product_id,url',
         ])
             ->where('user_id', $userId)

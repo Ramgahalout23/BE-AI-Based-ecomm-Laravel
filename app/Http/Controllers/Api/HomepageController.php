@@ -359,17 +359,20 @@ class HomepageController extends Controller
             // ── 10. Promotions (with camelCase mapping for frontend) ──
             $promotions = [];
             try {
-                $promotions = Promotion::where('is_active', true)
-                    ->where(function ($q) {
-                        $q->whereNull('start_date')->orWhere('start_date', '<=', now());
-                    })
-                    ->where(function ($q) {
-                        $q->whereNull('end_date')->orWhere('end_date', '>=', now());
-                    })
-                    ->orderBy('created_at', 'desc')
-                    ->get()
-                    ->toArray();
-                $promotions = array_map(fn($p) => $this->promotionToCamelCase($p), $promotions);
+                $salesEnabled = $settings['salesEnabled'] ?? 'true';
+                if ($salesEnabled !== 'false' && $salesEnabled !== '0') {
+                    $promotions = Promotion::where('is_active', true)
+                        ->where(function ($q) {
+                            $q->whereNull('start_date')->orWhere('start_date', '<=', now());
+                        })
+                        ->where(function ($q) {
+                            $q->whereNull('end_date')->orWhere('end_date', '>=', now());
+                        })
+                        ->orderBy('created_at', 'desc')
+                        ->get()
+                        ->toArray();
+                    $promotions = array_map(fn($p) => $this->promotionToCamelCase($p), $promotions);
+                }
             } catch (\Exception $e) {
                 logger()->warning('Homepage: promotions fetch failed', ['error' => $e->getMessage()]);
             }

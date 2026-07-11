@@ -106,6 +106,6 @@ class AppInitController extends Controller
         return response()->json([
             'success' => true,
             'data' => $data,
-        ])->setCache(['public' => true, 'max_age' => 300]);
+        ]);
     }
 }

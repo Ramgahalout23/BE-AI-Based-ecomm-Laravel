@@ -888,7 +888,7 @@ class AdminRepository
     public function getOrderById(string $id): ?Order
     {
         return Order::with([
-            'items.product:id,name,slug,price,image_url,quantity',
+            'items.product:id,name,slug,price,quantity',
             'user:id,first_name,last_name,email',
             'payment:id,order_id,amount,method,status,created_at',
             'timeline:id,order_id,status,note,created_at',

@@ -3,6 +3,7 @@
 namespace App\Repositories;
 
 use App\Models\Promotion;
+use App\Models\Setting;
 use App\Traits\CacheKeyRegistry;
 use Illuminate\Support\Facades\Cache;
 
@@ -28,6 +29,12 @@ class PromotionRepository extends BaseRepository
      */
     public function getActive(): \Illuminate\Database\Eloquent\Collection
     {
+        // Check global sales toggle — if disabled, return empty Eloquent Collection
+        $salesEnabled = Setting::where('key', 'salesEnabled')->value('value');
+        if ($salesEnabled === 'false' || $salesEnabled === '0') {
+            return new \Illuminate\Database\Eloquent\Collection();
+        }
+
         return $this->cacheWithTracking('promotions_active', 300, function () {
             $with = ['products:id,name,slug,price', 'categories:id,name,slug'];
 
