@@ -211,6 +211,10 @@ class InventoryController extends Controller
 
             $variant->refresh();
 
+            // Invalidate product + homepage caches so all pages reflect fresh stock
+            \Illuminate\Support\Facades\Cache::increment('products_cache_version');
+            \Illuminate\Support\Facades\Cache::forget('homepage_all');
+
             return response()->json([
                 'success' => true,
                 'message' => 'Stock adjusted successfully',
@@ -549,6 +553,10 @@ class InventoryController extends Controller
                     ];
                 }
             }
+
+            // Invalidate product + homepage caches after bulk stock changes
+            \Illuminate\Support\Facades\Cache::increment('products_cache_version');
+            \Illuminate\Support\Facades\Cache::forget('homepage_all');
 
             return response()->json([
                 'success' => true,

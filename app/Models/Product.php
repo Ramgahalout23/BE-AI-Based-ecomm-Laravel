@@ -17,13 +17,14 @@ class Product extends Model
         'name', 'slug', 'description', 'short_description', 'price', 'old_price', 'cost',
         'badge', 'quantity', 'sku', 'barcode', 'weight', 'category_id', 'brand_id',
         'status', 'is_featured', 'is_new', 'is_sale', 'is_digital', 'seo_title',
-        'seo_description', 'seo_keywords', 'tags', 'view_count', 'rating', 'review_count'
+        'seo_description', 'seo_keywords', 'tags', 'view_count', 'rating', 'review_count', 'sold_count'
     ];
 
     protected $casts = [
         'is_featured' => 'boolean', 'is_new' => 'boolean', 'is_sale' => 'boolean',
         'is_digital' => 'boolean', 'price' => 'decimal:2', 'old_price' => 'decimal:2',
         'cost' => 'decimal:2', 'weight' => 'decimal:3', 'rating' => 'decimal:2',
+        'sold_count' => 'integer',
     ];
 
     public function category(): BelongsTo { return $this->belongsTo(Category::class); }

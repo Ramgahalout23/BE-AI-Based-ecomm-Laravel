@@ -2,6 +2,8 @@
 
 namespace App\Providers;
 
+use App\Models\Review;
+use App\Observers\ReviewObserver;
 use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -28,6 +30,9 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // ── Auto-sync review_count and rating on review changes ──
+        Review::observe(ReviewObserver::class);
+
         // ── Database Query Logging ──
         // Only log queries in local/development environments to avoid overhead in production.
         if ($this->app->environment('local', 'development', 'staging')) {

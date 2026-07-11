@@ -173,5 +173,21 @@ class OrderSeeder extends Seeder
         }
 
         $this->command->info('   ✓ ' . count($createdOrders) . ' orders with items, payments & timelines created');
+
+        // ── Recalculate sold_count for products in DELIVERED/SHIPPED/COMPLETED orders ──
+        $soldProductIds = OrderItem::whereHas('order', function ($q) {
+            $q->whereIn('status', ['DELIVERED', 'SHIPPED', 'COMPLETED']);
+        })->pluck('product_id')->unique()->toArray();
+
+        if (!empty($soldProductIds)) {
+            app(\App\Repositories\ProductRepository::class)->batchUpdateProductSoldCount($soldProductIds);
+            $this->command->info('   ✓ sold_count updated for ' . count($soldProductIds) . ' products with delivered/shipped orders');
+
+            // Clear homepage cache so frontend shows fresh sold_count values
+            // (products_cache_version is already incremented inside batchUpdateProductSoldCount)
+            \Illuminate\Support\Facades\Cache::forget('homepage_all');
+        } else {
+            $this->command->warn('   ⚠ No products found with delivered/shipped orders — sold_count not updated');
+        }
     }
 }

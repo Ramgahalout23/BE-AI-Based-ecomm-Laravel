@@ -96,7 +96,7 @@ class ProductSeeder extends Seeder
                 'img' => 'https://images.unsplash.com/photo-1583743814966-8936f5b7be1a?q=80&w=800',
                 'img2' => 'https://images.unsplash.com/photo-1572495641004-28421ae7c9d2?q=80&w=800',
                 'badge' => 'Bestseller',
-                'rating' => 4.8, 'reviews' => 2340,
+                'rating' => 4.8, 'reviews' => 0,
                 'featured' => true, 'qty' => 120,
                 'colors' => [
                     ['color' => 'Black', 'price' => 599],
@@ -114,7 +114,7 @@ class ProductSeeder extends Seeder
                 'img' => 'https://images.unsplash.com/photo-1503342217505-b0a15ec3261c?q=80&w=800',
                 'img2' => 'https://images.unsplash.com/photo-1583743814966-8936f5b7be1a?q=80&w=800',
                 'badge' => 'Trending',
-                'rating' => 4.7, 'reviews' => 1856,
+                'rating' => 4.7, 'reviews' => 0,
                 'featured' => true, 'qty' => 85,
                 'colors' => [
                     ['color' => 'White', 'price' => 499],
@@ -130,7 +130,7 @@ class ProductSeeder extends Seeder
                 'img' => 'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?q=80&w=800',
                 'img2' => 'https://images.unsplash.com/photo-1618354691373-d851c5c3a990?q=80&w=800',
                 'badge' => 'Value',
-                'rating' => 4.5, 'reviews' => 3200,
+                'rating' => 4.5, 'reviews' => 0,
                 'featured' => true, 'qty' => 200,
                 'colors' => [
                     ['color' => 'White', 'price' => 349],
@@ -147,7 +147,7 @@ class ProductSeeder extends Seeder
                 'img' => 'https://images.unsplash.com/photo-1576566588028-4147f3842f27?q=80&w=800',
                 'img2' => 'https://images.unsplash.com/photo-1612714304529-e225036e6c4c?q=80&w=800',
                 'badge' => 'New',
-                'rating' => 4.9, 'reviews' => 1500,
+                'rating' => 4.9, 'reviews' => 0,
                 'featured' => true, 'qty' => 65,
                 'colors' => [
                     ['color' => 'Black', 'price' => 549],
@@ -162,7 +162,7 @@ class ProductSeeder extends Seeder
                 'img' => 'https://images.unsplash.com/photo-1612714304529-e225036e6c4c?q=80&w=800',
                 'img2' => 'https://images.unsplash.com/photo-1552374196-1ab2a1c593e8?q=80&w=800',
                 'badge' => 'New',
-                'rating' => 4.6, 'reviews' => 890,
+                'rating' => 4.6, 'reviews' => 0,
                 'featured' => false, 'qty' => 90,
                 'colors' => [
                     ['color' => 'Navy', 'price' => 449],
@@ -180,7 +180,7 @@ class ProductSeeder extends Seeder
                 'img' => 'https://images.unsplash.com/photo-1581655353564-df123a1eb820?q=80&w=800',
                 'img2' => 'https://images.unsplash.com/photo-1529374255404-311a2a4f1fd9?q=80&w=800',
                 'badge' => 'New',
-                'rating' => 4.6, 'reviews' => 890,
+                'rating' => 4.6, 'reviews' => 0,
                 'featured' => false, 'qty' => 70,
                 'colors' => [
                     ['color' => 'Green', 'price' => 699],
@@ -198,7 +198,7 @@ class ProductSeeder extends Seeder
                 'img' => 'https://images.unsplash.com/photo-1556821840-3a63f95609a7?q=80&w=800',
                 'img2' => 'https://images.unsplash.com/photo-1578768079052-aa76e52ff62e?q=80&w=800',
                 'badge' => 'Bestseller',
-                'rating' => 4.7, 'reviews' => 2100,
+                'rating' => 4.7, 'reviews' => 0,
                 'featured' => true, 'qty' => 50,
                 'colors' => [
                     ['color' => 'Black', 'price' => 1299],
@@ -214,7 +214,7 @@ class ProductSeeder extends Seeder
                 'img' => 'https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?q=80&w=800',
                 'img2' => 'https://images.unsplash.com/photo-1578768079052-aa76e52ff62e?q=80&w=800',
                 'badge' => 'Trending',
-                'rating' => 4.5, 'reviews' => 670,
+                'rating' => 4.5, 'reviews' => 0,
                 'featured' => true, 'qty' => 40,
                 'colors' => [
                     ['color' => 'Cream', 'price' => 999],
@@ -231,7 +231,7 @@ class ProductSeeder extends Seeder
                 'img' => 'https://images.unsplash.com/photo-1591047139829-d91aecb6caea?q=80&w=800',
                 'img2' => 'https://images.unsplash.com/photo-1551028719-00167b16eac5?q=80&w=800',
                 'badge' => 'Limited',
-                'rating' => 4.8, 'reviews' => 340,
+                'rating' => 4.8, 'reviews' => 0,
                 'featured' => true, 'qty' => 25,
                 'colors' => [
                     ['color' => 'Olive', 'price' => 1899],
@@ -246,7 +246,7 @@ class ProductSeeder extends Seeder
                 'img' => 'https://images.unsplash.com/photo-1576995853123-5a10305d93c0?q=80&w=800',
                 'img2' => 'https://images.unsplash.com/photo-1544022613-e87ca75a784a?q=80&w=800',
                 'badge' => null,
-                'rating' => 4.4, 'reviews' => 520,
+                'rating' => 4.4, 'reviews' => 0,
                 'featured' => false, 'qty' => 35,
                 'colors' => [
                     ['color' => 'Light Wash', 'price' => 1599],
@@ -264,7 +264,7 @@ class ProductSeeder extends Seeder
                 'img' => 'https://images.unsplash.com/photo-1523381210434-271e8be1f52b?q=80&w=800',
                 'img2' => 'https://images.unsplash.com/photo-1556306535-0f09a537bee0?q=80&w=800',
                 'badge' => 'Bestseller',
-                'rating' => 4.5, 'reviews' => 1200,
+                'rating' => 4.5, 'reviews' => 0,
                 'featured' => true, 'qty' => 150,
                 'colors' => [
                     ['color' => 'Black', 'price' => 399],
@@ -280,7 +280,7 @@ class ProductSeeder extends Seeder
                 'img' => 'https://images.unsplash.com/photo-1544816155-12df9643f363?q=80&w=800',
                 'img2' => 'https://images.unsplash.com/photo-1523381210434-271e8be1f52b?q=80&w=800',
                 'badge' => 'Eco',
-                'rating' => 4.3, 'reviews' => 560,
+                'rating' => 4.3, 'reviews' => 0,
                 'featured' => false, 'qty' => 200,
                 'colors' => [], // no size/color variants — simple product
             ],
@@ -313,7 +313,7 @@ class ProductSeeder extends Seeder
                 'img' => 'https://images.unsplash.com/photo-1596755094514-f87e34085b2c?q=80&w=800',
                 'img2' => 'https://images.unsplash.com/photo-1503342217505-b0a15ec3261c?q=80&w=800',
                 'badge' => null,
-                'rating' => 4.4, 'reviews' => 720,
+                'rating' => 4.4, 'reviews' => 0,
                 'featured' => false, 'qty' => 3,
                 'colors' => [
                     ['color' => 'Blue', 'price' => 499],

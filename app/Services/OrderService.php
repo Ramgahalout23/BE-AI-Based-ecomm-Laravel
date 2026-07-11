@@ -509,6 +509,22 @@ class OrderService
         // Invalidate cache AFTER the DB update to avoid a race where stale data is re-cached
         Cache::forget('order_' . $orderId);
 
+        // ── Update sold_count when order reaches or leaves a completed status ──
+        $soldStatuses = ['DELIVERED', 'SHIPPED', 'COMPLETED'];
+        $enteringSold = in_array($newStatus, $soldStatuses);
+        $leavingSold = in_array($order->status, $soldStatuses) && !in_array($newStatus, $soldStatuses);
+
+        if ($enteringSold || $leavingSold) {
+            $productIds = \App\Models\OrderItem::where('order_id', $orderId)
+                ->where('product_id', '!=', CUSTOM_TEE_PRODUCT_ID)
+                ->pluck('product_id')
+                ->unique()
+                ->toArray();
+            if (!empty($productIds)) {
+                app(\App\Repositories\ProductRepository::class)->batchUpdateProductSoldCount($productIds);
+            }
+        }
+
         // ── Dispatch webhook + notifications asynchronously ──
         \App\Jobs\DispatchWebhookJob::dispatch('order.status_updated', [
             'order_id' => $order->id,
@@ -592,8 +608,9 @@ class OrderService
             'notes' => $reason,
         ]);
 
-        // Invalidate cache AFTER the DB update
+        // Invalidate product + order caches so stock reflects restoration
         Cache::forget('order_' . $orderId);
+        Cache::increment('products_cache_version');
 
         // ── Webhook: order.cancelled (queued) ──
         \App\Jobs\DispatchWebhookJob::dispatch('order.cancelled', [

@@ -5,7 +5,9 @@ namespace Database\Seeders;
 use App\Models\Review;
 use App\Models\Product;
 use App\Models\User;
+use App\Repositories\ProductRepository;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\Cache;
 
 class ReviewSeeder extends Seeder
 {
@@ -35,6 +37,9 @@ class ReviewSeeder extends Seeder
             ['rating' => 4, 'title' => 'Great cap', 'comment' => 'Structured fit, looks premium.'],
         ];
 
+        // Track which products get reviews to update ratings later
+        $affectedProductIds = [];
+
         foreach ($reviewData as $r) {
             $productId = $products[array_rand($products)];
             Review::create([
@@ -45,7 +50,20 @@ class ReviewSeeder extends Seeder
                 'comment' => $r['comment'],
                 'is_verified' => true, 'is_moderated' => true,
             ]);
+            $affectedProductIds[$productId] = true;
         }
-        $this->command->info('   ✓ Reviews created');
+
+        // Update rating & review_count for all affected products
+        $productRepo = app(ProductRepository::class);
+        foreach (array_keys($affectedProductIds) as $pid) {
+            $productRepo->updateProductRating($pid);
+        }
+
+        // Invalidate all product caches so the new ratings appear immediately
+        $version = Cache::get('products_cache_version', 0);
+        Cache::forever('products_cache_version', $version + 1);
+        Cache::forget('homepage_all');
+
+        $this->command->info('   ✓ Reviews created — ratings updated for ' . count($affectedProductIds) . ' products, caches cleared');
     }
 }

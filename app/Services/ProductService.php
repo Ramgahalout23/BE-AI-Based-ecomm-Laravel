@@ -81,6 +81,7 @@ class ProductService
             }
 
             if (!$product) throw AppError::notFound('Product not found');
+            
             return $this->enrichWithVariantFields($product->toArray());
         });
     }
@@ -93,6 +94,7 @@ class ProductService
         'old_price'          => 'oldPrice',
         'short_description'  => 'shortDescription',
         'review_count'       => 'reviewCount',
+        'sold_count'         => 'soldCount',
         'is_featured'        => 'isFeatured',
         'is_new'             => 'isNew',
         'image_url'          => 'imageUrl',

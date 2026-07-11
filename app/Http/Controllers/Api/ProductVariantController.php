@@ -174,6 +174,8 @@ class ProductVariantController extends Controller
             $validated = $request->validate(['quantity' => 'required|integer|min:0']);
             $variant = ProductVariant::findOrFail($id);
             $variant->update(['quantity' => $validated['quantity']]);
+            \Illuminate\Support\Facades\Cache::increment('products_cache_version');
+            \Illuminate\Support\Facades\Cache::forget('homepage_all');
             return response()->json(['success' => true, 'data' => $variant]);
         } catch (AppError $e) { return $e->render(); }
     }
@@ -185,6 +187,8 @@ class ProductVariantController extends Controller
             foreach ($validated['variants'] as $v) {
                 ProductVariant::where('id', $v['id'])->update(['quantity' => $v['quantity']]);
             }
+            \Illuminate\Support\Facades\Cache::increment('products_cache_version');
+            \Illuminate\Support\Facades\Cache::forget('homepage_all');
             return response()->json(['success' => true, 'message' => 'Quantities updated']);
         } catch (AppError $e) { return $e->render(); }
     }

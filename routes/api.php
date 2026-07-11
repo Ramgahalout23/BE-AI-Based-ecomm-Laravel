@@ -200,6 +200,9 @@ Route::prefix('v1')->group(function () {
     Route::post('/tracking/event', [TrackingController::class, 'recordEvent']);
     Route::post('/payments/webhook', [PaymentController::class, 'webhook']);
 
+    // Public Recent Orders (for FOMO purchase notifications on storefront)
+    Route::get('/orders/recent', [OrderController::class, 'recentOrders']);
+
     // Public Settings
     Route::get('/settings', [SettingsController::class, 'index']);
     Route::get('/settings/maintenance', [SettingsController::class, 'getMaintenanceStatus']);

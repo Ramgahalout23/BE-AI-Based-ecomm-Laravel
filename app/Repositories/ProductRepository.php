@@ -4,6 +4,7 @@ namespace App\Repositories;
 
 use App\Models\Product;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\Cache;
 
 /**
  * UUID for the Custom T-Shirt product — hidden from user-facing product listings.
@@ -188,6 +189,7 @@ class ProductRepository extends BaseRepository
     {
         $product = $this->findByIdOrFail($id);
         $product->decrement('quantity', $quantity);
+        $this->invalidateProductCache();
         return $product->fresh();
     }
 
@@ -195,7 +197,18 @@ class ProductRepository extends BaseRepository
     {
         $product = $this->findByIdOrFail($id);
         $product->increment('quantity', $quantity);
+        $this->invalidateProductCache();
         return $product->fresh();
+    }
+
+    /**
+     * Invalidate all versioned product caches so homepage/detail pages
+     * reflect fresh stock data immediately.
+     */
+    public function invalidateProductCache(): void
+    {
+        $version = Cache::get('products_cache_version', 0);
+        Cache::forever('products_cache_version', $version + 1);
     }
 
     public function incrementViewCount(string $productId): void
@@ -219,6 +232,46 @@ class ProductRepository extends BaseRepository
             'rating' => round($ratingData->avg_rating, 2),
             'review_count' => (int) $ratingData->review_count,
         ]);
+    }
+
+    /**
+     * Recalculate and persist sold_count for a product based on completed order items.
+     */
+    public function updateProductSoldCount(string $productId): void
+    {
+        $soldCount = \App\Models\OrderItem::where('product_id', $productId)
+            ->whereHas('order', function ($q) {
+                $q->whereIn('status', ['DELIVERED', 'COMPLETED', 'SHIPPED']);
+            })
+            ->sum('quantity');
+
+        Product::where('id', $productId)->update(['sold_count' => (int) $soldCount]);
+    }
+
+    /**
+     * Batch-recalculate sold_count for multiple products at once.
+     */
+    public function batchUpdateProductSoldCount(array $productIds): void
+    {
+        $productIds = array_unique(array_filter($productIds));
+        if (empty($productIds)) return;
+
+        $soldCounts = \App\Models\OrderItem::whereIn('product_id', $productIds)
+            ->whereHas('order', function ($q) {
+                $q->whereIn('status', ['DELIVERED', 'COMPLETED', 'SHIPPED']);
+            })
+            ->groupBy('product_id')
+            ->selectRaw('product_id, SUM(quantity) as total_sold')
+            ->pluck('total_sold', 'product_id');
+
+        foreach ($productIds as $pid) {
+            Product::where('id', $pid)->update([
+                'sold_count' => (int) ($soldCounts[$pid] ?? 0),
+            ]);
+        }
+
+        // Invalidate product cache so homepage/detail pages reflect updated sold_count immediately
+        $this->invalidateProductCache();
     }
 
     public function getRelatedProducts(string $productId, int $limit = 5): \Illuminate\Database\Eloquent\Collection

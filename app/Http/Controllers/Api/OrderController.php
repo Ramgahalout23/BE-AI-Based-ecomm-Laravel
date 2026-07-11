@@ -370,6 +370,30 @@ class OrderController extends Controller
         }
     }
 
+    /**
+     * Public endpoint: Returns recent completed orders with customer name & city
+     * for FOMO purchase notifications on the storefront.
+     * No sensitive data (email, phone, address) is exposed.
+     */
+    public function recentOrders(): JsonResponse
+    {
+        $orders = \App\Models\Order::with(['user', 'shippingAddress', 'items.product'])
+            ->whereIn('status', ['DELIVERED', 'CONFIRMED', 'PROCESSING', 'SHIPPED'])
+            ->latest()
+            ->take(20)
+            ->get()
+            ->map(fn($order) => [
+                'name' => trim(($order->user?->first_name ?? '') . ' ' . ($order->user?->last_name ?? '')),
+                'city' => $order->shippingAddress?->city ?? '',
+                'product' => $order->items->first()?->product?->name ?? '',
+            ])
+            ->filter(fn($item) => !empty($item['name']))
+            ->values()
+            ->toArray();
+
+        return response()->json(['success' => true, 'data' => $orders]);
+    }
+
     public function getRevenueStats(Request $request): JsonResponse
     {
         $startDate = $request->start_date ? new \DateTime($request->start_date) : null;
