@@ -1,8 +1,11 @@
 <?php
 
-namespace App\Repositories;use App\Models\CartItem;
+namespace App\Repositories;
+
+use App\Models\CartItem;
 use App\Models\Product;
 use App\Models\RecentlyViewedProduct;
+use App\Repositories\ProductRepository;
 use App\Models\CartRecommendation;
 use Illuminate\Database\Eloquent\Collection;
 
@@ -196,6 +199,7 @@ class CartRepository extends BaseRepository
         return Product::whereNotIn('id', $cartProductIds)
             ->whereIn('category_id', $categoryIds)
             ->where('status', 'PUBLISHED')
+            ->where('id', '!=', ProductRepository::CUSTOM_TEE_PRODUCT_ID)
             ->take($limit)
             ->get(['id', 'name', 'price', 'slug']);
     }

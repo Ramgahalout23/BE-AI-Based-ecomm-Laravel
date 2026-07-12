@@ -6,14 +6,14 @@ use App\Models\Product;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Cache;
 
-/**
- * UUID for the Custom T-Shirt product — hidden from user-facing product listings.
- * Only accessible through the custom design flow (CustomizePage → Checkout).
- */
-const CUSTOM_TEE_PRODUCT_ID = 'c5b8e3f0-3a1c-4b7e-9d6f-1a2b3c4d5e6f';
-
 class ProductRepository extends BaseRepository
 {
+    /**
+     * UUID for the Custom T-Shirt product — hidden from user-facing product listings.
+     * Only accessible through the custom design flow (CustomizePage → Checkout).
+     */
+    public const CUSTOM_TEE_PRODUCT_ID = 'c5b8e3f0-3a1c-4b7e-9d6f-1a2b3c4d5e6f';
+
     protected function modelClass(): string
     {
         return Product::class;
@@ -28,7 +28,7 @@ class ProductRepository extends BaseRepository
             'variants:id,product_id,name,sku,attributes,price,quantity,images',
             'inventory:id,product_id,total_quantity,available_quantity',
             'reviews.user:id,first_name,last_name,avatar',
-        ])->find($id);
+        ])->where('id', '!=', self::CUSTOM_TEE_PRODUCT_ID)->find($id);
     }
 
     public function findBySlug(string $slug): ?Product
@@ -39,7 +39,7 @@ class ProductRepository extends BaseRepository
             'images:id,product_id,url,alt,display_order',
             'variants:id,product_id,name,sku,attributes,price,quantity,images',
             'inventory:id,product_id,total_quantity,available_quantity',
-        ])->where('slug', $slug)->where('id', '!=', CUSTOM_TEE_PRODUCT_ID)->first();
+        ])->where('slug', $slug)->where('id', '!=', self::CUSTOM_TEE_PRODUCT_ID)->first();
     }
 
     public function findBySku(string $sku): ?Product
@@ -62,7 +62,7 @@ class ProductRepository extends BaseRepository
         }
 
         // Hide custom tee from user-facing listings
-        $query->where('id', '!=', CUSTOM_TEE_PRODUCT_ID);
+        $query->where('id', '!=', self::CUSTOM_TEE_PRODUCT_ID);
 
         if (!empty($filters['category_id'])) {
             $query->where('category_id', $filters['category_id']);
@@ -107,7 +107,7 @@ class ProductRepository extends BaseRepository
             'images:id,product_id,url,alt,display_order',
             'variants:id,product_id,name,sku,attributes,price,quantity,images',
         ])->where('status', 'PUBLISHED')
-            ->where('id', '!=', CUSTOM_TEE_PRODUCT_ID)
+            ->where('id', '!=', self::CUSTOM_TEE_PRODUCT_ID)
             ->where('is_featured', true)
             ->latest()
             ->take($limit)
@@ -121,7 +121,7 @@ class ProductRepository extends BaseRepository
             'images:id,product_id,url,alt,display_order',
             'variants:id,product_id,name,sku,attributes,price,quantity,images',
         ])->where('status', 'PUBLISHED')
-            ->where('id', '!=', CUSTOM_TEE_PRODUCT_ID)
+            ->where('id', '!=', self::CUSTOM_TEE_PRODUCT_ID)
             ->latest()
             ->take($limit)
             ->get();
@@ -134,7 +134,7 @@ class ProductRepository extends BaseRepository
             'images:id,product_id,url,alt,display_order',
             'variants:id,product_id,name,sku,attributes,price,quantity,images',
         ])->where('status', 'PUBLISHED')
-            ->where('id', '!=', CUSTOM_TEE_PRODUCT_ID)
+            ->where('id', '!=', self::CUSTOM_TEE_PRODUCT_ID)
             ->orderBy('view_count', 'desc')
             ->take($limit)
             ->get();
@@ -158,7 +158,7 @@ class ProductRepository extends BaseRepository
                 'variants:id,product_id,name,sku,attributes,price,quantity,images',
                 'images:id,product_id,url,alt,display_order',
             ])->where('status', 'PUBLISHED')
-                ->where('id', '!=', CUSTOM_TEE_PRODUCT_ID)
+                ->where('id', '!=', self::CUSTOM_TEE_PRODUCT_ID)
                 ->where(function ($q) use ($query) {
                     $escapedQuery = str_replace(['"', "'"], '', $query); // Strip quotes for BOOLEAN mode
                     if (strlen($escapedQuery) >= 3) {
@@ -175,7 +175,7 @@ class ProductRepository extends BaseRepository
                 'variants:id,product_id,name,sku,attributes,price,quantity,images',
                 'images:id,product_id,url,alt,display_order',
             ])->where('status', 'PUBLISHED')
-                ->where('id', '!=', CUSTOM_TEE_PRODUCT_ID)
+                ->where('id', '!=', self::CUSTOM_TEE_PRODUCT_ID)
                 ->where(function ($q) use ($query) {
                     $q->where('name', 'like', "%{$query}%")
                       ->orWhere('description', 'like', "%{$query}%");
@@ -292,7 +292,7 @@ class ProductRepository extends BaseRepository
         return Product::with(['images:id,product_id,url,alt,display_order', 'category:id,name,slug,image'])
             ->whereIn('id', $relatedIds)
             ->where('id', '!=', $productId)
-            ->where('id', '!=', CUSTOM_TEE_PRODUCT_ID)
+            ->where('id', '!=', self::CUSTOM_TEE_PRODUCT_ID)
             ->where('status', 'PUBLISHED')
             ->take($limit)
             ->get();

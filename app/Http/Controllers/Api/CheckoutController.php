@@ -11,17 +11,13 @@ use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Models\User;
 use App\Services\OrderService;
+use App\Repositories\ProductRepository;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Str;
-/**
- * UUID for the Custom T-Shirt product — must match the product created
- * in the 2026_07_08_000010_create_custom_tee_product migration.
- */
-const CUSTOM_TEE_PRODUCT_ID = 'c5b8e3f0-3a1c-4b7e-9d6f-1a2b3c4d5e6f';
 
 class CheckoutController extends Controller
 {
@@ -138,7 +134,7 @@ class CheckoutController extends Controller
             $customItemKeys = [];
             $realProductIds = [];
             foreach ($validated['items'] as $idx => $item) {
-                if (!empty($item['isCustom']) || $item['productId'] === CUSTOM_TEE_PRODUCT_ID) {
+                if (!empty($item['isCustom']) || $item['productId'] === ProductRepository::CUSTOM_TEE_PRODUCT_ID) {
                     $customItemKeys[] = $idx;
                 } else {
                     $realProductIds[] = $item['productId'];
@@ -164,7 +160,7 @@ class CheckoutController extends Controller
                     // (the frontend computes BASE_PRICE + CUSTOM_DESIGN_FEE)
                     $price = (float) ($item['price'] ?? 699);
                     $orderItems[] = [
-                        'product_id' => CUSTOM_TEE_PRODUCT_ID,
+                        'product_id' => ProductRepository::CUSTOM_TEE_PRODUCT_ID,
                         'quantity' => (int) $item['quantity'],
                         'price' => $price,
                     ];

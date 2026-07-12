@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Repositories\OrderRepository;
 use App\Repositories\CartRepository;
+use App\Repositories\ProductRepository;
 use App\Exceptions\AppError;
 use App\Models\CustomDesign;
 use App\Models\Product;
@@ -11,12 +12,6 @@ use App\Models\ProductVariant;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
-
-/**
- * UUID for the Custom T-Shirt product — must match CheckoutController::CUSTOM_TEE_PRODUCT_ID
- * and the product created in the 2026_07_08_000010_create_custom_tee_product migration.
- */
-const CUSTOM_TEE_PRODUCT_ID = 'c5b8e3f0-3a1c-4b7e-9d6f-1a2b3c4d5e6f';
 
 class OrderService
 {
@@ -58,7 +53,7 @@ class OrderService
         // Pre-load variants and products for all items in the order (avoid N+1)
         // Accept pre-loaded data from CheckoutController to eliminate redundant queries
         $productIds = collect($data['items'])->pluck('product_id')->unique()
-            ->reject(fn($id) => $id === CUSTOM_TEE_PRODUCT_ID)
+            ->reject(fn($id) => $id === ProductRepository::CUSTOM_TEE_PRODUCT_ID)
             ->toArray();
         $variantsByProduct = $preloadedVariants ?? ProductVariant::whereIn('product_id', $productIds)
             ->orderBy('quantity', 'desc')
@@ -90,7 +85,7 @@ class OrderService
 
             foreach ($data['items'] as $itemIndex => $item) {
                 $variantId = null;
-                $isCustomTee = $item['product_id'] === CUSTOM_TEE_PRODUCT_ID;
+                $isCustomTee = $item['product_id'] === ProductRepository::CUSTOM_TEE_PRODUCT_ID;
 
                 // Custom tees are print-on-demand — no stock to check or deduct
                 if ($isCustomTee) {
@@ -516,7 +511,7 @@ class OrderService
 
         if ($enteringSold || $leavingSold) {
             $productIds = \App\Models\OrderItem::where('order_id', $orderId)
-                ->where('product_id', '!=', CUSTOM_TEE_PRODUCT_ID)
+                ->where('product_id', '!=', ProductRepository::CUSTOM_TEE_PRODUCT_ID)
                 ->pluck('product_id')
                 ->unique()
                 ->toArray();
@@ -565,7 +560,7 @@ class OrderService
 
         foreach ($orderItems as $item) {
             // Custom tees are print-on-demand — no stock to restore
-            if ($item->product_id === CUSTOM_TEE_PRODUCT_ID) {
+            if ($item->product_id === ProductRepository::CUSTOM_TEE_PRODUCT_ID) {
                 continue;
             }
             if ($item->variant_id) {

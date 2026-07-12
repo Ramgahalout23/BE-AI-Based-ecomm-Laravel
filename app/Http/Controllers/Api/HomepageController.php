@@ -12,6 +12,7 @@ use App\Models\Banner;
 use App\Models\Category;
 use App\Models\Promotion;
 use App\Traits\CacheKeyRegistry;
+use App\Repositories\ProductRepository;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Cache;
 
@@ -208,6 +209,7 @@ class HomepageController extends Controller
                 ])
                     ->where('status', 'PUBLISHED')
                     ->where('is_featured', true)
+                    ->where('id', '!=', ProductRepository::CUSTOM_TEE_PRODUCT_ID)
                     ->latest()
                     ->take(8)
                     ->get()
@@ -225,6 +227,7 @@ class HomepageController extends Controller
                     'variants:id,product_id,name,sku,attributes,price,quantity,images',
                 ])
                     ->where('status', 'PUBLISHED')
+                    ->where('id', '!=', ProductRepository::CUSTOM_TEE_PRODUCT_ID)
                     ->latest()
                     ->take(8)
                     ->get()
@@ -244,6 +247,7 @@ class HomepageController extends Controller
                         'variants:id,product_id,name,sku,attributes,price,quantity,images',
                     ])
                         ->where('status', 'PUBLISHED')
+                        ->where('id', '!=', ProductRepository::CUSTOM_TEE_PRODUCT_ID)
                         ->orderBy('view_count', 'desc')
                         ->take(8)
                         ->get()

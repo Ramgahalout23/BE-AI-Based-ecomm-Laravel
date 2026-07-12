@@ -6,6 +6,7 @@ use App\Repositories\CartRepository;
 use App\Exceptions\AppError;
 use App\Models\CartItem;
 use App\Models\Product;
+use App\Repositories\ProductRepository;
 use App\Models\ProductVariant;
 
 class CartService
@@ -296,6 +297,7 @@ class CartService
 
         $products = Product::whereIn('category_id', $cartProducts)
             ->whereNotIn('id', $cartProductIds)
+            ->where('id', '!=', ProductRepository::CUSTOM_TEE_PRODUCT_ID)
             ->take(5)
             ->get(['id', 'name', 'price']);
 
