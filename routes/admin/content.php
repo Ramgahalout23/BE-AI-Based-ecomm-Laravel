@@ -67,6 +67,7 @@ Route::put('/reels/{id}', [ReelController::class, 'update']);
 Route::patch('/reels/{id}/toggle', [ReelController::class, 'toggleStatus']);
 Route::patch('/reels/reorder', [ReelController::class, 'reorder']);
 Route::delete('/reels/{id}', [ReelController::class, 'destroy']);
+Route::get('/reels/{id}/likes', [ReelController::class, 'adminLikes']);
 
 // ── Curated Looks (Admin) ──
 Route::get('/curated-looks', [CuratedLookController::class, 'adminIndex']);

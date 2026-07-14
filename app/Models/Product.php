@@ -11,6 +11,14 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Product extends Model
 {
+    /**
+     * Scope to only include published products.
+     */
+    public function scopePublished($query)
+    {
+        return $query->where('status', 'PUBLISHED');
+    }
+
     use HasUuids;
 
     protected $fillable = [

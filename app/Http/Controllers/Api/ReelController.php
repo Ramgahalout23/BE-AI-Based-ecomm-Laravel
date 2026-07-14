@@ -4,10 +4,12 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Reel;
+use App\Models\ReelLike;
 use App\Models\Setting;
 use App\Traits\CacheKeyRegistry;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 
 class ReelController extends Controller
@@ -31,30 +33,45 @@ class ReelController extends Controller
             ])->setCache(['public' => true, 'max_age' => 300]);
         }
 
-        // Cache entire response data for 5 minutes — reels change infrequently
-        $data = $this->cacheWithTracking('reels_data', 300, function () {
-            return Reel::where('is_active', true)
-                ->with(['products' => function ($q) {
-                    $q->select('products.id', 'products.name', 'products.slug', 'products.price', 'products.old_price', 'products.rating', 'products.review_count', 'products.badge');
-                }, 'products.images' => function ($q) {
-                    $q->select('product_images.id', 'product_images.product_id', 'product_images.url', 'product_images.alt')
-                      ->orderBy('product_images.display_order');
-                }, 'products.variants' => function ($q) {
-                    $q->select('id', 'product_id', 'name', 'sku', 'attributes', 'price', 'quantity', 'images');
-                }])
-                ->orderBy('display_order')
-                ->orderBy('created_at', 'desc')
-                ->select('id', 'title', 'description', 'video_url', 'image_url', 'link_url', 'display_order')
-                ->get()
-                ->map(fn ($reel) => [
-                    'id' => $reel->id,
-                    'title' => $reel->title,
-                    'description' => $reel->description,
-                    'videoUrl' => $reel->video_url,
-                    'imageUrl' => $reel->image_url,
-                    'linkUrl' => $reel->link_url,
-                    'displayOrder' => $reel->display_order,
-                    'products' => $reel->products->map(fn ($p) => [
+        $user = Auth::user();
+
+        // Like counts are not cached — they change frequently. We load them separately.
+        $reels = Reel::where('is_active', true)
+            ->with(['products' => function ($q) {
+                $q->select('products.id', 'products.name', 'products.slug', 'products.price', 'products.old_price', 'products.rating', 'products.review_count', 'products.badge');
+            }, 'products.images' => function ($q) {
+                $q->select('product_images.id', 'product_images.product_id', 'product_images.url', 'product_images.alt')
+                  ->orderBy('product_images.display_order');
+            }, 'products.variants' => function ($q) {
+                $q->select('id', 'product_id', 'name', 'sku', 'attributes', 'price', 'quantity', 'images');
+            }])
+            ->withCount('likes')
+            ->orderBy('display_order')
+            ->orderBy('created_at', 'desc')
+            ->select('id', 'title', 'description', 'video_url', 'image_url', 'link_url', 'display_order')
+            ->get();
+
+        // Get liked reel IDs for the current user
+        $likedReelIds = [];
+        if ($user) {
+            $likedReelIds = ReelLike::where('user_id', $user->id)
+                ->whereIn('reel_id', $reels->pluck('id'))
+                ->pluck('reel_id')
+                ->map(fn ($id) => (string) $id)
+                ->toArray();
+        }
+
+        $data = $reels->map(fn ($reel) => [
+            'id' => $reel->id,
+            'title' => $reel->title,
+            'description' => $reel->description,
+            'videoUrl' => $reel->video_url,
+            'imageUrl' => $reel->image_url,
+            'linkUrl' => $reel->link_url,
+            'displayOrder' => $reel->display_order,
+            'likesCount' => $reel->likes_count,
+            'isLikedByUser' => in_array((string) $reel->id, $likedReelIds),
+            'products' => $reel->products->map(fn ($p) => [
                         'id' => $p->id,
                         'name' => $p->name,
                         'slug' => $p->slug,
@@ -131,6 +148,7 @@ class ReelController extends Controller
 
         return $this->cacheWithTracking($cacheKey, 300, function () use ($page, $perPage, $search, $isActiveFilter) {
             $query = Reel::select('id', 'title', 'description', 'video_url', 'image_url', 'link_url', 'display_order', 'is_active', 'created_at')
+                ->withCount('likes')
                 ->orderBy('display_order')
                 ->orderBy('created_at', 'desc');
 
@@ -308,6 +326,121 @@ class ReelController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Reels reordered',
+        ]);
+    }
+
+    /**
+     * Like a reel.
+     * POST /api/v1/reels/{id}/like
+     */
+    public function like(string $id): JsonResponse
+    {
+        $user = Auth::user();
+        if (!$user) {
+            return response()->json(['success' => false, 'message' => 'Unauthenticated'], 401);
+        }
+
+        $reel = Reel::findOrFail($id);
+
+        $existing = ReelLike::where('user_id', $user->id)
+            ->where('reel_id', $reel->id)
+            ->first();
+
+        if ($existing) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Already liked',
+                'data' => ['liked' => true, 'likesCount' => $reel->likes()->count()],
+            ]);
+        }
+
+        ReelLike::create([
+            'user_id' => $user->id,
+            'reel_id' => $reel->id,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Reel liked',
+            'data' => ['liked' => true, 'likesCount' => $reel->likes()->count()],
+        ]);
+    }
+
+    /**
+     * Unlike a reel.
+     * DELETE /api/v1/reels/{id}/like
+     */
+    public function unlike(string $id): JsonResponse
+    {
+        $user = Auth::user();
+        if (!$user) {
+            return response()->json(['success' => false, 'message' => 'Unauthenticated'], 401);
+        }
+
+        $reel = Reel::findOrFail($id);
+
+        ReelLike::where('user_id', $user->id)
+            ->where('reel_id', $reel->id)
+            ->delete();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Reel unliked',
+            'data' => ['liked' => false, 'likesCount' => $reel->likes()->count()],
+        ]);
+    }
+
+    /**
+     * Admin: Get list of users who liked a reel.
+     * GET /api/v1/admin/reels/{id}/likes
+     */
+    public function adminLikes(string $id): JsonResponse
+    {
+        $reel = Reel::findOrFail($id);
+
+        $likes = ReelLike::where('reel_id', $reel->id)
+            ->with(['user' => function ($q) {
+                $q->select('id', 'first_name', 'last_name', 'email', 'avatar');
+            }])
+            ->orderBy('created_at', 'desc')
+            ->get()
+            ->map(fn ($like) => [
+                'id' => $like->id,
+                'user_id' => $like->user_id,
+                'user_name' => trim(($like->user->first_name ?? '') . ' ' . ($like->user->last_name ?? '')),
+                'user_email' => $like->user->email ?? '',
+                'user_avatar' => $like->user->avatar ?? null,
+                'liked_at' => $like->created_at,
+            ]);
+
+        return response()->json([
+            'success' => true,
+            'data' => $likes,
+            'total' => $likes->count(),
+        ]);
+    }
+
+    /**
+     * Check if user has liked a reel.
+     * GET /api/v1/reels/{id}/liked
+     */
+    public function liked(string $id): JsonResponse
+    {
+        $user = Auth::user();
+        if (!$user) {
+            return response()->json(['success' => false, 'liked' => false], 401);
+        }
+
+        $reel = Reel::findOrFail($id);
+
+        $liked = ReelLike::where('user_id', $user->id)
+            ->where('reel_id', $reel->id)
+            ->exists();
+
+        return response()->json([
+            'success' => true,
+            'liked' => $liked,
+            'likesCount' => $reel->likes()->count(),
         ]);
     }
 }

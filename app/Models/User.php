@@ -58,6 +58,7 @@ class User extends Authenticatable
     public function userSessions(): HasMany { return $this->hasMany(UserSession::class); }
     public function userEvents(): HasMany { return $this->hasMany(UserEvent::class); }
     public function recentlyViewed(): HasMany { return $this->hasMany(RecentlyViewedProduct::class); }
+    public function reelLikes(): HasMany { return $this->hasMany(ReelLike::class); }
     public function walletAdjustments(): HasMany { return $this->hasMany(WalletAdjustment::class, 'admin_id'); }
     public function activityLogs(): HasMany { return $this->hasMany(ActivityLog::class); }
 

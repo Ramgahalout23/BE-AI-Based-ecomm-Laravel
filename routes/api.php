@@ -225,6 +225,9 @@ Route::prefix('v1')->group(function () {
     // Public Reels
     Route::get('/reels', [ReelController::class, 'index']);
 
+    // Authenticated Reel Likes (inside the auth:sanctum group we add the like/unlike routes)
+    // These are placed here for reference — they are nested inside the auth group below
+
     // Public Curated Looks
     Route::get('/curated-looks', [CuratedLookController::class, 'index']);
 
@@ -288,6 +291,11 @@ Route::prefix('v1')->group(function () {
                         // ── Custom Design Orders ──
                         Route::get('/custom-designs/user', [CustomDesignController::class, 'userDesigns']);
                         Route::post('/custom-designs', [CustomDesignController::class, 'store']);
+
+        // ── Reel Likes (authenticated) ──
+        Route::post('/reels/{id}/like', [ReelController::class, 'like']);
+        Route::delete('/reels/{id}/like', [ReelController::class, 'unlike']);
+        Route::get('/reels/{id}/liked', [ReelController::class, 'liked']);
 
         // ── Cart Merge ──
         Route::post('/cart/merge', [CartController::class, 'mergeCart']);
