@@ -313,6 +313,8 @@ class HomepageController extends Controller
                         }, 'products.images' => function ($q) {
                             $q->select('product_images.id', 'product_images.product_id', 'product_images.url', 'product_images.alt')
                               ->orderBy('product_images.display_order');
+                        }, 'products.variants' => function ($q) {
+                            $q->select('id', 'product_id', 'name', 'sku', 'attributes', 'price', 'quantity', 'images');
                         }])
                         ->orderBy('display_order')
                         ->orderBy('created_at', 'desc')
@@ -336,6 +338,28 @@ class HomepageController extends Controller
                                 'review_count' => $p->review_count,
                                 'badge' => $p->badge,
                                 'image_url' => $p->images->first()?->url ?? null,
+                                'variants' => $p->variants->map(fn ($v) => [
+                                    'id' => $v->id,
+                                    'product_id' => $v->product_id,
+                                    'name' => $v->name,
+                                    'sku' => $v->sku,
+                                    'attributes' => is_string($v->attributes) ? json_decode($v->attributes, true) : $v->attributes,
+                                    'price' => $v->price,
+                                    'quantity' => $v->quantity,
+                                    'images' => $v->images,
+                                ])->values()->toArray(),
+                                'colors' => collect($p->variants)
+                                    ->map(fn ($v) => $v->attributes['color'] ?? null)
+                                    ->filter()
+                                    ->unique()
+                                    ->values()
+                                    ->toArray(),
+                                'sizes' => collect($p->variants)
+                                    ->map(fn ($v) => $v->attributes['size'] ?? null)
+                                    ->filter()
+                                    ->unique()
+                                    ->values()
+                                    ->toArray(),
                             ]),
                         ])
                         ->toArray();
