@@ -18,7 +18,7 @@ class TrackingService
      * Record a page view asynchronously after the response is sent.
      * Returns immediately — the actual DB insert happens in a queued job.
      */
-    public function recordPageView(string $url, ?string $userId, ?string $sessionId, ?string $referrer, ?string $title = null, ?string $userAgent = null, ?string $device = null): array
+    public function recordPageView(string $url, ?string $userId, ?string $sessionId, ?string $referrer, ?string $title = null, ?string $userAgent = null, ?string $device = null, ?string $source = null, ?string $utmSource = null, ?string $utmMedium = null, ?string $utmCampaign = null, ?string $utmTerm = null, ?string $utmContent = null): array
     {
         RecordPageViewJob::dispatchAfterResponse(
             $url,
@@ -27,13 +27,19 @@ class TrackingService
             $referrer,
             $title,
             $userAgent,
-            $device
+            $device,
+            $source,
+            $utmSource,
+            $utmMedium,
+            $utmCampaign,
+            $utmTerm,
+            $utmContent
         );
 
         return ['recorded' => true];
     }
 
-    public function createSession(?string $sessionId, ?string $userId, string $ip, string $userAgent, ?string $device = null, ?string $browser = null, ?string $os = null, ?string $referrer = null, ?string $landingPage = null): array
+    public function createSession(?string $sessionId, ?string $userId, string $ip, string $userAgent, ?string $device = null, ?string $browser = null, ?string $os = null, ?string $referrer = null, ?string $landingPage = null, ?string $source = null, ?string $utmSource = null, ?string $utmMedium = null, ?string $utmCampaign = null, ?string $utmTerm = null, ?string $utmContent = null): array
     {
         RecordSessionJob::dispatchAfterResponse(
             $sessionId,
@@ -44,7 +50,13 @@ class TrackingService
             $browser,
             $os,
             $referrer,
-            $landingPage
+            $landingPage,
+            $source,
+            $utmSource,
+            $utmMedium,
+            $utmCampaign,
+            $utmTerm,
+            $utmContent
         );
 
         return ['recorded' => true, 'session_id' => $sessionId];
@@ -85,6 +97,16 @@ class TrackingService
     public function getTopPages(int $limit = 10): array
     {
         return $this->trackingRepository->getTopPages($limit)->toArray();
+    }
+
+    public function getTrafficSourceStats(?string $dateRange = null, ?string $startDate = null, ?string $endDate = null): array
+    {
+        return $this->trackingRepository->getTrafficSourceStats($dateRange, $startDate, $endDate);
+    }
+
+    public function getUtmCampaignStats(?string $dateRange = null, ?string $startDate = null, ?string $endDate = null): array
+    {
+        return $this->trackingRepository->getUtmCampaignStats($dateRange, $startDate, $endDate);
     }
 
     // ── Admin Event Methods ──

@@ -27,7 +27,13 @@ class RecordPageViewJob implements ShouldQueue
         protected ?string $referrer,
         protected ?string $title,
         protected ?string $userAgent,
-        protected ?string $device
+        protected ?string $device,
+        protected ?string $source = null,
+        protected ?string $utmSource = null,
+        protected ?string $utmMedium = null,
+        protected ?string $utmCampaign = null,
+        protected ?string $utmTerm = null,
+        protected ?string $utmContent = null,
     ) {}
 
     /**
@@ -44,6 +50,12 @@ class RecordPageViewJob implements ShouldQueue
                 'url' => $this->url,
                 'title' => $this->title,
                 'referrer' => $this->referrer,
+                'source' => $this->source,
+                'utm_source' => $this->utmSource,
+                'utm_medium' => $this->utmMedium,
+                'utm_campaign' => $this->utmCampaign,
+                'utm_term' => $this->utmTerm,
+                'utm_content' => $this->utmContent,
                 'user_agent' => $this->userAgent,
                 'device' => $this->device,
                 'created_at' => now(),

@@ -61,6 +61,7 @@ Route::get('/tracking/sessions/active', [TrackingController::class, 'activeSessi
 Route::get('/tracking/sessions/stats', [TrackingController::class, 'sessionStats']);
 Route::get('/tracking/dashboard', [TrackingController::class, 'dashboard']);
 Route::get('/tracking/journey/{userId}', [TrackingController::class, 'getUserJourney']);
+Route::get('/tracking/traffic-sources', [TrackingController::class, 'trafficSources']);
 
 // ── Payments (Admin) ──
 Route::get('/payments/all', [PaymentController::class, 'getAllPayments']);

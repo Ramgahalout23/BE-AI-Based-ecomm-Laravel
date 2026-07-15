@@ -28,7 +28,13 @@ class TrackingController extends Controller
             $request->referrer,
             $request->title,
             $request->userAgent ?? $request->user_agent,
-            $request->device
+            $request->device,
+            $request->source,
+            $request->utmSource ?? $request->utm_source,
+            $request->utmMedium ?? $request->utm_medium,
+            $request->utmCampaign ?? $request->utm_campaign,
+            $request->utmTerm ?? $request->utm_term,
+            $request->utmContent ?? $request->utm_content
         );
         return response()->json(['success' => true, 'data' => $view]);
     }
@@ -52,7 +58,13 @@ class TrackingController extends Controller
             $request->browser,
             $request->os,
             $request->referrer,
-            $request->landingPage ?? $request->landing_page
+            $request->landingPage ?? $request->landing_page,
+            $request->source,
+            $request->utmSource ?? $request->utm_source,
+            $request->utmMedium ?? $request->utm_medium,
+            $request->utmCampaign ?? $request->utm_campaign,
+            $request->utmTerm ?? $request->utm_term,
+            $request->utmContent ?? $request->utm_content
         );
         return response()->json(['success' => true, 'data' => $session]);
     }
@@ -146,6 +158,19 @@ class TrackingController extends Controller
     public function getEventStats(): JsonResponse
     {
         return response()->json(['success' => true, 'data' => $this->trackingService->getEventStats()]);
+    }
+
+    public function trafficSources(Request $request): JsonResponse
+    {
+        $dateRange = $request->query('dateRange', 'all');
+        $startDate = $request->query('startDate');
+        $endDate = $request->query('endDate');
+        $sources = $this->trackingService->getTrafficSourceStats($dateRange, $startDate, $endDate);
+        $utmStats = $this->trackingService->getUtmCampaignStats($dateRange, $startDate, $endDate);
+        return response()->json(['success' => true, 'data' => [
+            'sources' => $sources,
+            'utm_campaigns' => $utmStats,
+        ]]);
     }
 
     public function getUserJourney(string $userId): JsonResponse

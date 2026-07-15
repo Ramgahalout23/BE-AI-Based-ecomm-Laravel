@@ -29,7 +29,13 @@ class RecordSessionJob implements ShouldQueue
         protected ?string $browser,
         protected ?string $os,
         protected ?string $referrer,
-        protected ?string $landingPage
+        protected ?string $landingPage,
+        protected ?string $source = null,
+        protected ?string $utmSource = null,
+        protected ?string $utmMedium = null,
+        protected ?string $utmCampaign = null,
+        protected ?string $utmTerm = null,
+        protected ?string $utmContent = null,
     ) {}
 
     /**
@@ -42,41 +48,38 @@ class RecordSessionJob implements ShouldQueue
             $now = now();
             $exists = DB::table('user_sessions')->where('session_id', $this->sessionId)->exists();
 
+            $data = [
+                'user_id' => $this->userId,
+                'ip_address' => $this->ip,
+                'user_agent' => $this->userAgent,
+                'device' => $this->device,
+                'browser' => $this->browser,
+                'os' => $this->os,
+                'referrer' => $this->referrer,
+                'source' => $this->source,
+                'utm_source' => $this->utmSource,
+                'utm_medium' => $this->utmMedium,
+                'utm_campaign' => $this->utmCampaign,
+                'utm_term' => $this->utmTerm,
+                'utm_content' => $this->utmContent,
+                'landing_page' => $this->landingPage,
+                'start_time' => $now,
+                'is_active' => true,
+            ];
+
             if ($exists) {
                 DB::table('user_sessions')
                     ->where('session_id', $this->sessionId)
-                    ->update([
-                        'user_id' => $this->userId,
-                        'ip_address' => $this->ip,
-                        'user_agent' => $this->userAgent,
-                        'device' => $this->device,
-                        'browser' => $this->browser,
-                        'os' => $this->os,
-                        'referrer' => $this->referrer,
-                        'landing_page' => $this->landingPage,
-                        'start_time' => $now,
-                        'is_active' => true,
-                        'updated_at' => $now,
-                    ]);
+                    ->update(array_merge($data, ['updated_at' => $now]));
             } else {
-                DB::table('user_sessions')->insert([
+                DB::table('user_sessions')->insert(array_merge($data, [
                     'id' => (string) Str::orderedUuid(),
                     'session_id' => $this->sessionId,
-                    'user_id' => $this->userId,
-                    'ip_address' => $this->ip,
-                    'user_agent' => $this->userAgent,
-                    'device' => $this->device,
-                    'browser' => $this->browser,
-                    'os' => $this->os,
-                    'referrer' => $this->referrer,
-                    'landing_page' => $this->landingPage,
-                    'start_time' => $now,
-                    'is_active' => true,
                     'duration' => 0,
                     'page_views' => 0,
                     'created_at' => $now,
                     'updated_at' => $now,
-                ]);
+                ]));
             }
         } catch (\Throwable $e) {
             Log::warning('[RecordSessionJob] Failed to record session', [

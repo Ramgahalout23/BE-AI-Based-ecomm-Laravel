@@ -108,7 +108,6 @@ class ReelController extends Controller
                             ->toArray(),
                     ]),
                 ]);
-        });
 
         return response()->json([
             'success' => true,
