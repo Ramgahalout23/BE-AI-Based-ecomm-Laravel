@@ -87,13 +87,13 @@ return new class extends Migration
             }
         }
 
-        // ── 6. abandoned_carts(user_id, is_recovered) ──
+        // ── 6. abandoned_carts(user_id, recovered) ──
         // Query: AbandonedCart::where('user_id', $id)->latest()
         // Used in AbandonedCartRepository::getUserAbandonedCarts()
         if (Schema::hasTable('abandoned_carts')) {
             if (!$this->indexExists('abandoned_carts', 'abandoned_carts_user_recovered_index')) {
                 Schema::table('abandoned_carts', function (Blueprint $table) {
-                    $table->index(['user_id', 'is_recovered'], 'abandoned_carts_user_recovered_index');
+                    $table->index(['user_id', 'recovered'], 'abandoned_carts_user_recovered_index');
                 });
             }
         }
