@@ -379,6 +379,33 @@ class ProductService
         return $updated->toArray();
     }
 
+    public function getRelated(string $productId, int $limit = 8): array
+    {
+        $cacheKey = $this->versionedCacheKey('related', ['id' => $productId, 'limit' => $limit]);
+        return Cache::remember($cacheKey, 600, function () use ($productId, $limit) {
+            $categoryId = \App\Models\Product::where('id', $productId)->value('category_id');
+            if (!$categoryId) {
+                return [];
+            }
+
+            $products = \App\Models\Product::with([
+                'category:id,name,slug,image',
+                'images:id,product_id,url,alt,display_order',
+                'variants:id,product_id,name,sku,attributes,price,quantity,images',
+            ])
+            ->where('category_id', $categoryId)
+            ->where('id', '!=', $productId)
+            ->where('id', '!=', \App\Repositories\ProductRepository::CUSTOM_TEE_PRODUCT_ID)
+            ->where('status', 'PUBLISHED')
+            ->inRandomOrder()
+            ->take($limit)
+            ->get()
+            ->toArray();
+
+            return $this->decodeVariantAttributesInList($products);
+        });
+    }
+
     public function getLowStock(int $threshold = 5): array
     {
         return $this->decodeVariantAttributesInList($this->productRepository->findLowStock($threshold)->toArray());

@@ -258,6 +258,12 @@ class ProductController extends Controller
     /**
      * Check the status of an async product import.
      */
+    public function related(Request $request, string $id): JsonResponse
+    {
+        $products = $this->productService->getRelated($id, $request->limit ?? 8);
+        return response()->json(['success' => true, 'data' => $products]);
+    }
+
     public function importStatus(string $importId): JsonResponse
     {
         $status = ProcessProductImportJob::getStatus($importId);

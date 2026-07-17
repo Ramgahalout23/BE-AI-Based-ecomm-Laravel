@@ -139,6 +139,7 @@ Route::prefix('v1')->group(function () {
     Route::get('/products/brand', [BrandController::class, 'index']);
     Route::get('/products/category/{categoryId}', [ProductController::class, 'byCategory']);
     Route::get('/products/{productId}/availability', [ProductController::class, 'checkAvailability']);
+    Route::get('/products/{id}/related', [ProductController::class, 'related']);
     Route::get('/products/{id}', [ProductController::class, 'show']);
     Route::get('/products', [ProductController::class, 'index']);
 
