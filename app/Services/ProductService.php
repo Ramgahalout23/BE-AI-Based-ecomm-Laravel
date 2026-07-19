@@ -98,6 +98,7 @@ class ProductService
         'is_featured'        => 'isFeatured',
         'is_new'             => 'isNew',
         'image_url'          => 'imageUrl',
+        'hover_image_url'    => 'hoverImageUrl',
         'category_id'        => 'categoryId',
         'brand_id'           => 'brandId',
         'created_at'         => 'createdAt',

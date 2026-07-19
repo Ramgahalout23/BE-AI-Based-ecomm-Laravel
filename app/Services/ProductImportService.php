@@ -22,7 +22,7 @@ class ProductImportService
         return [
             'name', 'description', 'short_description', 'price', 'old_price', 'cost',
             'quantity', 'sku', 'barcode', 'category', 'brand', 'images', 'tags', 'status',
-            'badge', 'is_featured', 'seo_title', 'seo_description', 'seo_keywords',
+            'badge', 'is_featured', 'hover_image_url', 'seo_title', 'seo_description', 'seo_keywords',
             'variant_sku', 'variant_color', 'variant_size', 'variant_price', 'variant_quantity',
         ];
     }
@@ -185,6 +185,7 @@ class ProductImportService
                 'tags' => $get('tags'),
                 'status' => $get('status'),
                 'is_featured' => strtolower($get('is_featured') ?? 'false') === 'true',
+                'hover_image_url' => $get('hover_image_url') ?? $get('hover_image'),
                 'badge' => $get('badge'),
                 'seo_title' => $get('seo_title') ?? $get('seotitle'),
                 'seo_description' => $get('seo_description') ?? $get('seodescription'),
@@ -290,6 +291,7 @@ class ProductImportService
                         'sku' => $sku,
                         'barcode' => $row['barcode'] ?? null,
                         'badge' => $row['badge'] ?? null,
+                        'hover_image_url' => $row['hover_image_url'] ?? null,
                         'tags' => $row['tags'] ?? null,
                         'is_featured' => $row['is_featured'] ?? false,
                         'status' => strtoupper($row['status'] ?? 'DRAFT'),

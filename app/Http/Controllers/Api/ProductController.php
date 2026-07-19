@@ -100,6 +100,7 @@ class ProductController extends Controller
         try {
             $input = $this->mapCamelCase($request->all(), [
                 'categoryId' => 'category_id',
+                'hoverImageUrl' => 'hover_image_url',
             ]);
             $request->replace($input);
 
@@ -126,6 +127,7 @@ class ProductController extends Controller
         try {
             $input = $this->mapCamelCase($request->all(), [
                 'categoryId' => 'category_id',
+                'hoverImageUrl' => 'hover_image_url',
             ]);
             $request->replace($input);
 
