@@ -99,6 +99,7 @@ class ProductService
         'is_new'             => 'isNew',
         'image_url'          => 'imageUrl',
         'hover_image_url'    => 'hoverImageUrl',
+        'video_url'          => 'videoUrl',
         'category_id'        => 'categoryId',
         'brand_id'           => 'brandId',
         'created_at'         => 'createdAt',
