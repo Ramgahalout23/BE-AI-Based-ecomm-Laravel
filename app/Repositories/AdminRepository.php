@@ -762,8 +762,12 @@ class AdminRepository
             $filters['per_page'] = $filters['limit'];
         }
 
-        $query = Product::with(['category' => fn($q) => $q->select(['id', 'name']), 'inventory' => fn($q) => $q->select(['id', 'product_id', 'available_quantity'])])
-            ->select(['id', 'name', 'slug', 'sku', 'price', 'old_price', 'cost', 'status', 'quantity', 'category_id', 'description', 'short_description', 'rating', 'review_count', 'badge', 'created_at']);
+        $query = Product::with([
+            'category' => fn($q) => $q->select(['id', 'name']),
+            'inventory' => fn($q) => $q->select(['id', 'product_id', 'available_quantity']),
+            'images:id,product_id,url,display_order',
+        ])
+            ->select(['id', 'name', 'slug', 'sku', 'price', 'old_price', 'cost', 'status', 'quantity', 'category_id', 'description', 'short_description', 'rating', 'review_count', 'badge', 'created_at', 'hover_image_url', 'video_url']);
 
         if (!empty($filters['search'])) {
             $search = $filters['search'];
@@ -791,6 +795,8 @@ class AdminRepository
             $product->shortDescription = $product->short_description;
             $product->categoryName = $product->category?->name;
             $product->stock = $product->quantity;
+            $product->videoUrl = $product->video_url;
+            $product->hoverImageUrl = $product->hover_image_url;
             return $product;
         });
 
