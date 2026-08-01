@@ -114,6 +114,7 @@ class ProductController extends Controller
                 'quantity' => 'nullable|integer|min:0',
                 'status' => 'nullable|string|in:DRAFT,PUBLISHED,ARCHIVED',
                 'video_url' => 'nullable|string|max:2048',
+                'attributes' => 'nullable|array',
             ]);
 
             $product = $this->productService->create($validated);
@@ -141,6 +142,7 @@ class ProductController extends Controller
                 'sku' => 'nullable|string|unique:products,sku,'.$id,
                 'status' => 'nullable|string|in:DRAFT,PUBLISHED,ARCHIVED',
                 'video_url' => 'nullable|string|max:2048',
+                'attributes' => 'nullable|array',
             ]);
 
             $product = $this->productService->update($id, $validated);

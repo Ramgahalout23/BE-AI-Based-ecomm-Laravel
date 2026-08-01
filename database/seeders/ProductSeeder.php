@@ -377,9 +377,10 @@ class ProductSeeder extends Seeder
                             'product_id' => $prod->id,
                             'name'       => $def['name'] . ' - ' . $config['color'] . ' - ' . $size,
                             'sku'        => $prod->sku . '-' . strtoupper(substr($config['color'], 0, 3)) . '-' . $size,
-                            'attributes' => json_encode(['size' => $size, 'color' => $config['color']]),
+                            'attributes' => ['size' => $size, 'color' => $config['color']],
                             'price'      => $config['price'],
                             'quantity'   => $vqty,
+                            'images'     => VariantThumbnailSeeder::imagesFor($config['color'] ?? null),
                         ]);
                     }
                 }

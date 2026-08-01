@@ -72,6 +72,8 @@ class OrderService
                 'tax' => $data['tax'] ?? 0,
                 'shipping_cost' => $data['shipping_cost'] ?? 0,
                 'discount' => $data['discount'] ?? 0,
+                'bundle_discount' => $data['bundle_discount'] ?? 0,
+                'flash_sale_discount' => $data['flash_sale_discount'] ?? 0,
                 'total' => $total + ($data['tax'] ?? 0) + ($data['shipping_cost'] ?? 0) - ($data['discount'] ?? 0),
                 'status' => ($data['payment_method'] ?? '') === 'COD' ? 'CONFIRMED' : 'PENDING',
                 'confirmed_at' => ($data['payment_method'] ?? '') === 'COD' ? now() : null,
@@ -216,7 +218,11 @@ class OrderService
         // their own image injection. But we need imageUrl for real product items.
         if (isset($orderArray['items']) && is_array($orderArray['items'])) {
             foreach ($orderArray['items'] as &$item) {
-                $item['imageUrl'] = $item['product']['images'][0]['url'] ?? $item['image_url'] ?? null;
+                // Prefer the selected variant's own first image so the order shows the exact color/size picked
+                $variantImages = is_array($item['variant']['images'] ?? null) ? $item['variant']['images'] : [];
+                $item['imageUrl'] = !empty($variantImages)
+                    ? $variantImages[0]
+                    : ($item['product']['images'][0]['url'] ?? $item['image_url'] ?? null);
             }
             unset($item);
         }
@@ -350,7 +356,11 @@ class OrderService
     private function mapItemsFromCustomDesigns(array &$items, Collection $customDesigns): void
     {
         foreach ($items as &$item) {
-            $item['imageUrl'] = $item['product']['images'][0]['url'] ?? $item['image_url'] ?? null;
+            // Prefer the selected variant's own first image so the order shows the exact color/size picked
+            $variantImages = is_array($item['variant']['images'] ?? null) ? $item['variant']['images'] : [];
+            $item['imageUrl'] = !empty($variantImages)
+                ? $variantImages[0]
+                : ($item['product']['images'][0]['url'] ?? $item['image_url'] ?? null);
             // Map size/color from variant attributes
             if (!empty($item['variant']) && !empty($item['variant']['attributes'])) {
                 $attrs = $item['variant']['attributes'];
@@ -682,7 +692,9 @@ class OrderService
                 'quantity' => $item->quantity,
                 'price' => (float) $item->price,
                 'total' => (float) $item->total,
-                'image_url' => $item->product?->images?->first()?->url,
+                'image_url' => $item->variant_id && is_array($item->variant?->images) && !empty($item->variant->images)
+                    ? $item->variant->images[0]
+                    : ($item->product?->images?->first()?->url),
             ];
         })->toArray();
 

@@ -102,6 +102,14 @@ class SettingsSeeder extends Seeder
             ['module' => 'PAYMENT', 'key' => 'codEnabled', 'value' => 'true'],
             ['module' => 'PAYMENT', 'key' => 'codInstructions', 'value' => 'Pay with cash upon delivery'],
 
+            // Bundle Offer (Buy More, Save More) — admin-controlled volume discount.
+            // Seeded INACTIVE by default; activate from Admin → Settings → General when ready.
+            // Date window: blank start/end = no date bounds (permanent while enabled).
+            ['module' => 'SITE', 'key' => 'bundleOfferEnabled', 'value' => 'false'],
+            ['module' => 'SITE', 'key' => 'bundleTiers', 'value' => '[{"minQty":2,"discount":5},{"minQty":3,"discount":10},{"minQty":4,"discount":15}]'],
+            ['module' => 'SITE', 'key' => 'bundleOfferStartDate', 'value' => ''],
+            ['module' => 'SITE', 'key' => 'bundleOfferEndDate', 'value' => ''],
+
             // Storage Driver (local | s3)
             ['module' => 'SYSTEM', 'key' => 'storage_driver', 'value' => 'local'],
         ];

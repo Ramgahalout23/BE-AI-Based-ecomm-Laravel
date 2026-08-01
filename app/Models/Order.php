@@ -13,13 +13,15 @@ class Order extends Model
     use HasUuids;
     protected $fillable = [
         'order_number', 'user_id', 'shipping_address_id', 'billing_address_id',
-        'subtotal', 'tax', 'shipping_cost', 'discount', 'total', 'coupon_id',
+        'subtotal', 'tax', 'shipping_cost', 'discount', 'bundle_discount', 'flash_sale_discount',
+        'total', 'coupon_id',
         'status', 'notes', 'admin_notes', 'label_url',
         'confirmed_at', 'processing_at', 'shipped_at', 'delivered_at', 'cancelled_at'
     ];
     protected $casts = [
         'subtotal' => 'decimal:2', 'tax' => 'decimal:2', 'shipping_cost' => 'decimal:2',
-        'discount' => 'decimal:2', 'total' => 'decimal:2',
+        'discount' => 'decimal:2', 'bundle_discount' => 'decimal:2', 'flash_sale_discount' => 'decimal:2',
+        'total' => 'decimal:2',
         'confirmed_at' => 'datetime', 'processing_at' => 'datetime',
         'shipped_at' => 'datetime', 'delivered_at' => 'datetime', 'cancelled_at' => 'datetime',
     ];

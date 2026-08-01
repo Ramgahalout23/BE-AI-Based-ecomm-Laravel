@@ -12,6 +12,29 @@ use Barryvdh\DomPDF\Facade\Pdf;
 class InvoiceService
 {
     /**
+     * Map currency codes to display symbols — mirrors the storefront
+     * CURRENCY_SYMBOLS map in FE src/utils/formatters.js so the invoice
+     * matches the checkout display.
+     */
+    public static function currencySymbol(?string $code): string
+    {
+        $symbols = [
+            'INR' => 'Rs.',
+            'USD' => '$',
+            'EUR' => '€',
+            'GBP' => '£',
+            'AED' => 'AED',
+            'SAR' => 'SAR',
+            'SGD' => 'S$',
+            'MYR' => 'RM',
+            'AUD' => 'A$',
+            'CAD' => 'C$',
+        ];
+
+        return $symbols[strtoupper((string) $code)] ?? '$';
+    }
+
+    /**
      * Generate a PDF invoice for a given order.
      */
     public function generateInvoice(string $orderId): \Barryvdh\DomPDF\PDF
@@ -27,14 +50,17 @@ class InvoiceService
         $storeName = '';
         $storeEmail = '';
         $brandTagline = '';
+        $currency = 'INR';
         try {
             $storeName = Setting::where('module', 'SITE')->where('key', 'storeName')->value('value') ?? 'THREVOLT';
             $storeEmail = Setting::where('module', 'SITE')->where('key', 'storeEmail')->value('value') ?? 'support@threvolt.com';
             $brandTagline = Setting::where('module', 'SITE')->where('key', 'brandTagline')->value('value') ?? 'Premium Fashion & Lifestyle';
+            $currency = Setting::where('module', 'SITE')->where('key', 'currency')->value('value') ?? 'INR';
         } catch (\Exception $e) {
             $storeName = 'THREVOLT';
             $storeEmail = 'support@threvolt.com';
             $brandTagline = 'Premium Fashion & Lifestyle';
+            $currency = 'INR';
         }
 
         $data = [
@@ -45,6 +71,8 @@ class InvoiceService
                 'email' => $storeEmail,
                 'logo' => '',
             ],
+            'currency' => $currency,
+            'currencySymbol' => self::currencySymbol($currency),
             'invoiceNumber' => 'INV-' . ($order->order_number ?? strtoupper(substr($order->id, 0, 12))),
             'generatedAt' => now()->format(config('app.date_format')),
         ];

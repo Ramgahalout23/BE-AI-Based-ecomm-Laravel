@@ -42,8 +42,33 @@ class ProductVariantController extends Controller
     public function store(Request $request, string $productId): JsonResponse
     {
         try {
-            $validated = $request->validate(['name' => 'required|string', 'sku' => 'required|string', 'price' => 'nullable|numeric', 'quantity' => 'nullable|integer']);
-            return response()->json(['success' => true, 'message' => 'Variant created', 'data' => $this->variantService->create($productId, $validated)], 201);
+            $validated = $request->validate([
+                'name' => 'required|string',
+                'sku' => 'required|string',
+                'price' => 'nullable|numeric',
+                'quantity' => 'nullable|integer',
+                'stock' => 'nullable|integer',
+                'color' => 'nullable|string',
+                'size' => 'nullable|string',
+                'description' => 'nullable|string',
+                'images' => 'nullable|array',
+                'images.*' => 'string',
+            ]);
+
+            // Build attributes from color/size so variants are selectable in the storefront
+            $attributes = array_filter([
+                'size' => $validated['size'] ?? null,
+                'color' => $validated['color'] ?? null,
+            ], fn ($v) => $v !== null && $v !== '');
+
+            $data = array_merge($validated, [
+                'attributes' => $attributes,
+                'quantity' => $validated['quantity'] ?? $validated['stock'] ?? 0,
+                'images' => $validated['images'] ?? [],
+            ]);
+            unset($data['stock'], $data['color'], $data['size']);
+
+            return response()->json(['success' => true, 'message' => 'Variant created', 'data' => $this->variantService->create($productId, $data)], 201);
         } catch (AppError $e) { return $e->render(); }
     }
 

@@ -35,7 +35,7 @@ class OrderRepository extends BaseRepository
                     $q->select('id', 'product_id', 'url');
                 },
                 'items.variant' => function ($q) {
-                    $q->select('id', 'name', 'attributes');
+                    $q->select('id', 'name', 'attributes', 'images');
                 },
                 'user' => function ($q) {
                     $q->select(['id', 'first_name', 'last_name', 'email', 'phone_number', 'created_at']);
@@ -79,7 +79,7 @@ class OrderRepository extends BaseRepository
                     $q->select('id', 'product_id', 'url');
                 },
                 'items.variant' => function ($q) {
-                    $q->select('id', 'name', 'attributes');
+                    $q->select('id', 'name', 'attributes', 'images');
                 },
                 'user' => function ($q) {
                     $q->select(['id', 'first_name', 'last_name', 'email', 'phone_number', 'created_at']);
@@ -109,7 +109,7 @@ class OrderRepository extends BaseRepository
                     $q->select('id', 'product_id', 'url');
                 },
                 'items.variant' => function ($q) {
-                    $q->select('id', 'name', 'attributes');
+                    $q->select('id', 'name', 'attributes', 'images');
                 },
             ])
             ->where('user_id', $userId);
@@ -139,7 +139,7 @@ class OrderRepository extends BaseRepository
                     $q->select('id', 'product_id', 'url');
                 },
                 'items.variant' => function ($q) {
-                    $q->select('id', 'name', 'attributes');
+                    $q->select('id', 'name', 'attributes', 'images');
                 },
             ]);
 

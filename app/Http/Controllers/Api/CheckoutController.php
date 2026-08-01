@@ -187,7 +187,14 @@ class CheckoutController extends Controller
 
             // ── Auto-apply flash sale discounts ──
             $flashSaleResult = $this->flashSaleService->getApplicableDiscounts($orderItems);
-            $discount = $flashSaleResult['total_discount'];
+
+            // ── Buy More, Save More — per-line volume discount (2→5%, 3→10%, 4+→15%) ──
+            $bundleDiscount = $this->checkoutService->calculateBundleDiscount($orderItems);
+
+            $discount = $flashSaleResult['total_discount'] + $bundleDiscount;
+
+            // ── Tax (honors the admin's taxCalculation setting: 0 for inclusive, % of subtotal for exclusive) ──
+            $tax = $this->checkoutService->calculateTax($subtotal);
 
             // ── Create the order directly via OrderService (bypass OrderController::store) ──
             $orderService = app(OrderService::class);
@@ -195,7 +202,10 @@ class CheckoutController extends Controller
                 'shipping_address_id' => $address->id,
                 'items' => $orderItems,
                 'shipping_cost' => $shippingCost,
+                'tax' => $tax,
                 'discount' => $discount,
+                'bundle_discount' => $bundleDiscount,
+                'flash_sale_discount' => $flashSaleResult['total_discount'],
                 'payment_method' => $validated['paymentMethod'] ?? null,
                 'notes' => $validated['notes'] ?? null,
             ], $preloadedProducts, $preloadedVariants);

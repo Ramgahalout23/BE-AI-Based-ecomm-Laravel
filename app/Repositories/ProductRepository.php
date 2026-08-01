@@ -28,6 +28,7 @@ class ProductRepository extends BaseRepository
             'variants:id,product_id,name,sku,attributes,price,quantity,images',
             'inventory:id,product_id,total_quantity,available_quantity',
             'reviews.user:id,first_name,last_name,avatar',
+            'attributes:id,product_id,name,value',
         ])->where('id', '!=', self::CUSTOM_TEE_PRODUCT_ID)->find($id);
     }
 
@@ -39,6 +40,7 @@ class ProductRepository extends BaseRepository
             'images:id,product_id,url,alt,display_order',
             'variants:id,product_id,name,sku,attributes,price,quantity,images',
             'inventory:id,product_id,total_quantity,available_quantity',
+            'attributes:id,product_id,name,value',
         ])->where('slug', $slug)->where('id', '!=', self::CUSTOM_TEE_PRODUCT_ID)->first();
     }
 
@@ -53,6 +55,7 @@ class ProductRepository extends BaseRepository
             'category:id,name,slug,image',
             'images:id,product_id,url,alt,display_order',
             'variants:id,product_id,name,sku,attributes,price,quantity,images',
+            'attributes:id,product_id,name,value',
         ]);
 
         if (!empty($filters['status'])) {
@@ -106,6 +109,7 @@ class ProductRepository extends BaseRepository
             'category:id,name,slug,image',
             'images:id,product_id,url,alt,display_order',
             'variants:id,product_id,name,sku,attributes,price,quantity,images',
+            'attributes:id,product_id,name,value',
         ])->where('status', 'PUBLISHED')
             ->where('id', '!=', self::CUSTOM_TEE_PRODUCT_ID)
             ->where('is_featured', true)
@@ -120,6 +124,7 @@ class ProductRepository extends BaseRepository
             'category:id,name,slug,image',
             'images:id,product_id,url,alt,display_order',
             'variants:id,product_id,name,sku,attributes,price,quantity,images',
+            'attributes:id,product_id,name,value',
         ])->where('status', 'PUBLISHED')
             ->where('id', '!=', self::CUSTOM_TEE_PRODUCT_ID)
             ->latest()
@@ -133,6 +138,7 @@ class ProductRepository extends BaseRepository
             'category:id,name,slug,image',
             'images:id,product_id,url,alt,display_order',
             'variants:id,product_id,name,sku,attributes,price,quantity,images',
+            'attributes:id,product_id,name,value',
         ])->where('status', 'PUBLISHED')
             ->where('id', '!=', self::CUSTOM_TEE_PRODUCT_ID)
             ->orderBy('view_count', 'desc')
@@ -157,6 +163,7 @@ class ProductRepository extends BaseRepository
             return Product::with([
                 'variants:id,product_id,name,sku,attributes,price,quantity,images',
                 'images:id,product_id,url,alt,display_order',
+                'attributes:id,product_id,name,value',
             ])->where('status', 'PUBLISHED')
                 ->where('id', '!=', self::CUSTOM_TEE_PRODUCT_ID)
                 ->where(function ($q) use ($query) {
@@ -174,6 +181,7 @@ class ProductRepository extends BaseRepository
             return Product::with([
                 'variants:id,product_id,name,sku,attributes,price,quantity,images',
                 'images:id,product_id,url,alt,display_order',
+                'attributes:id,product_id,name,value',
             ])->where('status', 'PUBLISHED')
                 ->where('id', '!=', self::CUSTOM_TEE_PRODUCT_ID)
                 ->where(function ($q) use ($query) {

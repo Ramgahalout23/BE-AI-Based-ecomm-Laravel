@@ -766,6 +766,7 @@ class AdminRepository
             'category' => fn($q) => $q->select(['id', 'name']),
             'inventory' => fn($q) => $q->select(['id', 'product_id', 'available_quantity']),
             'images:id,product_id,url,display_order',
+            'attributes:id,product_id,name,value',
         ])
             ->select(['id', 'name', 'slug', 'sku', 'price', 'old_price', 'cost', 'status', 'quantity', 'category_id', 'description', 'short_description', 'rating', 'review_count', 'badge', 'created_at', 'hover_image_url', 'video_url']);
 
@@ -797,6 +798,10 @@ class AdminRepository
             $product->stock = $product->quantity;
             $product->videoUrl = $product->video_url;
             $product->hoverImageUrl = $product->hover_image_url;
+            // Flatten product_attributes relation into a key-value map
+            $product->attributes = $product->attributes
+                ? $product->attributes->pluck('value', 'name')->toArray()
+                : [];
             return $product;
         });
 
@@ -811,6 +816,7 @@ class AdminRepository
             'images:id,product_id,url,display_order',
             'variants:id,product_id,name,price,quantity,is_active',
             'inventory:id,product_id,available_quantity,total_quantity,reserved_quantity',
+            'attributes:id,product_id,name,value',
             'reviews' => function ($q) {
                 $q->latest()->take(20);
             },

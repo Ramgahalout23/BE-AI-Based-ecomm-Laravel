@@ -20,7 +20,25 @@ class CheckoutService
 
     protected function getTaxRate(): float
     {
-        return (float) ($this->settingsService->get('taxRate', '10.0')) / 100;
+        return (float) ($this->settingsService->get('taxRate', '18.0')) / 100;
+    }
+
+    protected function getTaxCalculation(): string
+    {
+        return (string) $this->settingsService->get('taxCalculation', 'inclusive');
+    }
+
+    /**
+     * Calculate tax for a subtotal, honoring the admin's taxCalculation setting.
+     * - 'inclusive' → prices already include tax → no extra tax charged (0).
+     * - 'exclusive' → tax is added on top of the subtotal at checkout.
+     */
+    public function calculateTax(float $subtotal): float
+    {
+        if ($this->getTaxCalculation() !== 'exclusive') {
+            return 0.0;
+        }
+        return round($subtotal * $this->getTaxRate(), 2);
     }
 
     protected function getFreeShippingThreshold(): float
@@ -37,8 +55,7 @@ class CheckoutService
     {
         $items = $this->cartRepository->getUserCart($userId);
         $subtotal = $items->sum(fn($item) => ($item->product?->price ?? 0) * $item->quantity);
-        $taxRate = $this->getTaxRate();
-        $tax = $subtotal * $taxRate;
+        $tax = $this->calculateTax($subtotal);
         $freeShippingThreshold = $this->getFreeShippingThreshold();
         $standardShippingCost = $this->getStandardShippingCost();
         $shipping = $subtotal >= $freeShippingThreshold ? 0 : $standardShippingCost;
@@ -51,7 +68,7 @@ class CheckoutService
         }
         unset($item);
 
-        // Build plain items array for flash sale matching
+        // Build plain items array for flash sale matching + bundle discount
         $plainItems = $itemsArray;
         foreach ($plainItems as &$plainItem) {
             $plainItem['product_id'] = $plainItem['product']['id'] ?? $plainItem['product_id'] ?? null;
@@ -62,6 +79,9 @@ class CheckoutService
 
         $flashSaleDiscounts = $this->flashSaleService->getApplicableDiscounts($plainItems);
 
+        // Buy More, Save More — per-line volume discount based on each line's quantity
+        $bundleDiscount = $this->calculateBundleDiscount($plainItems);
+
         return [
             'items' => $itemsArray,
             'subtotal' => $subtotal,
@@ -70,9 +90,155 @@ class CheckoutService
             'flashSaleDiscount' => $flashSaleDiscounts['total_discount'],
             'flashSaleDiscountItems' => $flashSaleDiscounts['items_discount'],
             'flashSalePromotions' => $flashSaleDiscounts['flash_sales'],
-            'total' => $subtotal + $tax + $shipping - $flashSaleDiscounts['total_discount'],
+            'bundleDiscount' => $bundleDiscount,
+            'total' => $subtotal + $tax + $shipping - $flashSaleDiscounts['total_discount'] - $bundleDiscount,
             'item_count' => $items->sum('quantity'),
         ];
+    }
+
+    /**
+     * Buy More, Save More — per-line volume discount.
+     * Each cart line is discounted based on its OWN quantity against the
+     * admin-configured bundle tiers (default: qty 2 → 5%, qty 3 → 10%, qty 4+ → 15%).
+     * A tier may optionally define a per-product maxQty cap, in which case the
+     * discount applies only while the line quantity is within [minQty, maxQty].
+     * Only applies when the offer is activated in Admin → Settings (bundleOfferEnabled).
+     * Mirrors the frontend BUNDLE_TIERS in utils/constants.js.
+     *
+     * @param array $items  Each item needs 'quantity' and 'price'.
+     */
+    public function calculateBundleDiscount(array $items): float
+    {
+        // Offer must be activated from the admin panel; seeded inactive by default.
+        if (!$this->isBundleOfferEnabled()) {
+            return 0.0;
+        }
+
+        $tiers = $this->getBundleTiers();
+        $total = 0.0;
+        foreach ($items as $item) {
+            $qty = (int) ($item['quantity'] ?? 0);
+            $price = (float) ($item['price'] ?? 0);
+            $pct = $this->getBundleTierPercent($qty, $tiers);
+            if ($pct > 0) {
+                $total += $price * $qty * ($pct / 100);
+            }
+        }
+        return round($total, 2);
+    }
+
+    /**
+     * Whether the bundle offer is active.
+     * Requires ALL of: the global salesEnabled toggle, the bundleOfferEnabled toggle
+     * (seeded 'false' — admin enables it from Admin → Settings → General), and the
+     * optional date window (bundleOfferStartDate/bundleOfferEndDate, blank = no bound).
+     * Mirrors the frontend isBundleOfferEnabled in utils/constants.js.
+     */
+    protected function isBundleOfferEnabled(): bool
+    {
+        $salesEnabled = (string) $this->settingsService->get('salesEnabled', 'true');
+        if ($salesEnabled === 'false' || $salesEnabled === '0') {
+            return false;
+        }
+        if ((string) $this->settingsService->get('bundleOfferEnabled', 'false') === 'false') {
+            return false;
+        }
+
+        // Optional date window — offer only applies while today is within [start, end]
+        // "Today" is evaluated in the store's configured timezone so it matches the
+        // frontend check (utils/constants.js isBundleOfferEnabled) across timezones.
+        $start = (string) $this->settingsService->get('bundleOfferStartDate', '');
+        $end = (string) $this->settingsService->get('bundleOfferEndDate', '');
+        if ($start !== '' || $end !== '') {
+            $today = now($this->resolveStoreTimezone())->format('Y-m-d');
+            if ($start !== '' && $today < $start) {
+                return false;
+            }
+            if ($end !== '' && $today > $end) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Resolve the stored timezone setting (abbreviation like 'IST' or an IANA
+     * name like 'Asia/Kolkata') to a valid IANA name for Carbon. Mirrors the
+     * frontend TIMEZONE_MAP in utils/formatters.js.
+     */
+    protected function resolveStoreTimezone(): string
+    {
+        $tz = (string) $this->settingsService->get('timezone', 'UTC');
+        if (str_contains($tz, '/')) {
+            return $tz;
+        }
+        $map = [
+            'IST' => 'Asia/Kolkata',
+            'EST' => 'America/New_York',
+            'CST' => 'America/Chicago',
+            'MST' => 'America/Denver',
+            'PST' => 'America/Los_Angeles',
+            'GMT' => 'Europe/London',
+            'CET' => 'Europe/Paris',
+            'EET' => 'Europe/Helsinki',
+            'AEST' => 'Australia/Sydney',
+            'AEDT' => 'Australia/Sydney',
+            'JST' => 'Asia/Tokyo',
+            'KST' => 'Asia/Seoul',
+            'CST_CN' => 'Asia/Shanghai',
+            'HKT' => 'Asia/Hong_Kong',
+            'SGT' => 'Asia/Singapore',
+            'GST' => 'Asia/Dubai',
+            'NZST' => 'Pacific/Auckland',
+            'NZDT' => 'Pacific/Auckland',
+            'BST' => 'Europe/London',
+            'AST' => 'America/Halifax',
+            'NST' => 'America/St_Johns',
+            'AKST' => 'America/Anchorage',
+            'HST' => 'Pacific/Honolulu',
+        ];
+        return $map[strtoupper($tz)] ?? 'UTC';
+    }
+
+    /**
+     * Read the admin-configured bundle tiers (JSON list of
+     * {minQty, discount, maxQty?}). Falls back to the default tiers if unset or
+     * malformed. maxQty is optional and caps the per-product quantity window.
+     */
+    protected function getBundleTiers(): array
+    {
+        $raw = (string) $this->settingsService->get('bundleTiers', '');
+        $tiers = json_decode($raw, true);
+        if (!is_array($tiers) || empty($tiers)) {
+            return [
+                ['minQty' => 2, 'discount' => 5],
+                ['minQty' => 3, 'discount' => 10],
+                ['minQty' => 4, 'discount' => 15],
+            ];
+        }
+        return array_values(array_filter($tiers, fn($t) => isset($t['minQty'])));
+    }
+
+    /**
+     * Highest discount percent for a quantity among the tiers, honoring each
+     * tier's optional per-product maxQty window: a tier applies only while
+     * minQty <= qty <= maxQty (maxQty absent = open-ended).
+     */
+    protected function getBundleTierPercent(int $qty, array $tiers): int
+    {
+        $pct = 0;
+        foreach ($tiers as $tier) {
+            $minQty = (int) ($tier['minQty'] ?? 0);
+            // Only a positive maxQty acts as a cap (mirrors the frontend parser,
+            // which drops caps <= 0 and treats the tier as open-ended).
+            $maxQty = isset($tier['maxQty']) && $tier['maxQty'] !== '' && (int) $tier['maxQty'] > 0
+                ? (int) $tier['maxQty']
+                : null;
+            if ($qty >= $minQty && ($maxQty === null || $qty <= $maxQty)) {
+                $pct = max($pct, (int) ($tier['discount'] ?? 0));
+            }
+        }
+        return $pct;
     }
 
     public function calculateShipping(string $userId): array

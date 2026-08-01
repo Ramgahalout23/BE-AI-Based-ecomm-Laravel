@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Models\Order;
 use App\Models\Product;
+use App\Models\Setting;
 use App\Models\User;
 use App\Services\EmailService;
 use App\Services\NotificationService;
@@ -137,6 +138,14 @@ class ProcessOrderAfterCreation implements ShouldQueue
                 ];
             }, $items);
 
+            // Store currency + payment label for the email (mirrors checkout display)
+            $currency = 'INR';
+            try {
+                $currency = Setting::where('module', 'SITE')->where('key', 'currency')->value('value') ?? 'INR';
+            } catch (\Exception $e) {}
+            $paymentLabels = ['COD' => 'Cash on Delivery', 'RAZORPAY' => 'Razorpay', 'RAZORPAY_UPI' => 'Razorpay UPI', 'RAZORPAY_CARD' => 'Razorpay Card', 'STRIPE' => 'Stripe'];
+            $paymentLabel = $paymentLabels[strtoupper((string) $this->paymentMethod)] ?? $this->paymentMethod;
+
             $emailService->sendOrderConfirmation(
                 $user->email,
                 $user->first_name . ' ' . $user->last_name,
@@ -144,13 +153,23 @@ class ProcessOrderAfterCreation implements ShouldQueue
                     'orderNumber' => $order->order_number,
                     'customerName' => $user->first_name . ' ' . $user->last_name,
                     'items' => $formattedItems,
-                    'subtotal' => $total,
-                    'shippingCost' => 0,
-                    'tax' => 0,
-                    'discount' => 0,
-                    'total' => $total,
-                    'shippingAddress' => 'N/A',
-                    'paymentMethod' => 'N/A',
+                    'subtotal' => (float) $order->subtotal,
+                    'shippingCost' => (float) $order->shipping_cost,
+                    'tax' => (float) $order->tax,
+                    'discount' => (float) $order->discount,
+                    'total' => (float) $order->total,
+                    'currency' => $currency,
+                    'shippingAddress' => $order->shippingAddress
+                        ? trim(implode(', ', array_filter([
+                            $order->shippingAddress->address_line1,
+                            $order->shippingAddress->address_line2,
+                            $order->shippingAddress->city,
+                            $order->shippingAddress->state,
+                            $order->shippingAddress->zip_code,
+                            $order->shippingAddress->country,
+                        ])))
+                        : 'N/A',
+                    'paymentMethod' => $paymentLabel ?: 'N/A',
                 ]
             );
 

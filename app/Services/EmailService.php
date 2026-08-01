@@ -230,6 +230,7 @@ class EmailService
     {
         $customerName = $data['customerName'] ?? 'Customer';
         $orderNumber = $data['orderNumber'] ?? 'N/A';
+        $currencySymbol = $data['currencySymbol'] ?? InvoiceService::currencySymbol($data['currency'] ?? 'INR');
         $subtotal = number_format($data['subtotal'] ?? 0, 2);
         $shippingCost = number_format($data['shippingCost'] ?? 0, 2);
         $tax = number_format($data['tax'] ?? 0, 2);
@@ -239,6 +240,7 @@ class EmailService
         $paymentMethod = $data['paymentMethod'] ?? '';
         $estimatedDelivery = $data['estimatedDelivery'] ?? '';
         $hasDiscount = !empty($data['discount']) && $data['discount'] > 0;
+        $hasTax = !empty($data['tax']) && $data['tax'] > 0;
 
         $itemsHtml = '';
         foreach ($data['items'] ?? [] as $item) {
@@ -246,10 +248,15 @@ class EmailService
             $qty = $item['quantity'] ?? 0;
             $price = number_format($item['price'] ?? 0, 2);
             $total = number_format($item['total'] ?? 0, 2);
-            $itemsHtml .= '<tr><td style="padding:10px;border-bottom:1px solid #eee;">' . $name . '</td><td style="padding:10px;border-bottom:1px solid #eee;text-align:center;">' . $qty . '</td><td style="padding:10px;border-bottom:1px solid #eee;text-align:right;">$' . $price . '</td><td style="padding:10px;border-bottom:1px solid #eee;text-align:right;">$' . $total . '</td></tr>';
+            $itemsHtml .= '<tr><td style="padding:10px;border-bottom:1px solid #eee;">' . $name . '</td><td style="padding:10px;border-bottom:1px solid #eee;text-align:center;">' . $qty . '</td><td style="padding:10px;border-bottom:1px solid #eee;text-align:right;">' . $currencySymbol . ' ' . $price . '</td><td style="padding:10px;border-bottom:1px solid #eee;text-align:right;">' . $currencySymbol . ' ' . $total . '</td></tr>';
         }
 
-        $discountRow = $hasDiscount ? '<tr><td style="padding:5px;color:#666;">Discount</td><td style="padding:5px;text-align:right;color:#22c55e;">-$' . $discount . '</td></tr>' : '';
+        $discountRow = $hasDiscount ? '<tr><td style="padding:5px;color:#666;">Discount</td><td style="padding:5px;text-align:right;color:#22c55e;">-' . $currencySymbol . ' ' . $discount . '</td></tr>' : '';
+        // Tax row only when tax applies (exclusive mode) — matches checkout/invoice display
+        $taxRow = $hasTax
+            ? '<tr><td style="padding:5px;color:#666;">Tax</td><td style="padding:5px;text-align:right;">' . $currencySymbol . ' ' . $tax . '</td></tr>'
+            : '';
+        $inclusiveNote = $hasTax ? '' : '<p style="margin:6px 0 0;color:#888;font-size:12px;">Inclusive of all taxes</p>';
         $deliveryRow = $estimatedDelivery ? '<p style="margin:4px 0 0;color:#555;">Estimated Delivery: <strong>' . $estimatedDelivery . '</strong></p>' : '';
 
         return $this->buildEmailWrapper('Order Confirmed! 🎉',
@@ -257,7 +264,7 @@ class EmailService
             '<p style="color:#555;line-height:1.6;">Your order has been placed successfully.</p>' .
             '<div style="background:#f8f9fa;border-radius:6px;padding:15px;margin:20px 0;text-align:center;"><p style="margin:0;color:#666;font-size:14px;">Order Number</p><p style="margin:4px 0 0;font-size:20px;font-weight:bold;color:#1a1a2e;">' . $orderNumber . '</p></div>' .
             '<table style="width:100%;border-collapse:collapse;margin:20px 0;"><thead><tr style="background:#f8f9fa;"><th style="padding:10px;text-align:left;font-size:14px;color:#666;">Item</th><th style="padding:10px;text-align:center;font-size:14px;color:#666;">Qty</th><th style="padding:10px;text-align:right;font-size:14px;color:#666;">Price</th><th style="padding:10px;text-align:right;font-size:14px;color:#666;">Total</th></tr></thead><tbody>' . $itemsHtml . '</tbody></table>' .
-            '<div style="border-top:2px solid #eee;padding-top:15px;"><table style="width:100%;"><tr><td style="padding:5px;color:#666;">Subtotal</td><td style="padding:5px;text-align:right;">$' . $subtotal . '</td></tr>' . $discountRow . '<tr><td style="padding:5px;color:#666;">Shipping</td><td style="padding:5px;text-align:right;">$' . $shippingCost . '</td></tr><tr><td style="padding:5px;color:#666;">Tax</td><td style="padding:5px;text-align:right;">$' . $tax . '</td></tr><tr style="font-weight:bold;font-size:18px;"><td style="padding:10px 5px;border-top:2px solid #333;">Total</td><td style="padding:10px 5px;border-top:2px solid #333;text-align:right;">$' . $total . '</td></tr></table></div>' .
+            '<div style="border-top:2px solid #eee;padding-top:15px;"><table style="width:100%;"><tr><td style="padding:5px;color:#666;">Subtotal</td><td style="padding:5px;text-align:right;">' . $currencySymbol . ' ' . $subtotal . '</td></tr>' . $discountRow . '<tr><td style="padding:5px;color:#666;">Shipping</td><td style="padding:5px;text-align:right;">' . $currencySymbol . ' ' . $shippingCost . '</td></tr>' . $taxRow . '<tr style="font-weight:bold;font-size:18px;"><td style="padding:10px 5px;border-top:2px solid #333;">Total</td><td style="padding:10px 5px;border-top:2px solid #333;text-align:right;">' . $currencySymbol . ' ' . $total . '</td></tr></table>' . $inclusiveNote . '</div>' .
             '<div style="background:#f8f9fa;border-radius:6px;padding:15px;margin:20px 0;"><h3 style="margin:0 0 10px;font-size:16px;color:#333;">Shipping Address</h3><p style="margin:0;color:#555;">' . $shippingAddress . '</p><p style="margin:8px 0 0;color:#555;">Payment: <strong>' . $paymentMethod . '</strong></p>' . $deliveryRow . '</div>'
         );
     }

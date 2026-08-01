@@ -21,7 +21,7 @@ class CartRepository extends BaseRepository
         return CartItem::with([
             'product:id,name,slug,price,quantity,old_price,status',
             'product.images:id,product_id,url',
-            'variant:id,product_id,name,price,quantity',
+            'variant:id,product_id,name,price,quantity,images',
         ])
             ->where('user_id', $userId)
             ->where('saved_for_later', false)
@@ -36,7 +36,7 @@ class CartRepository extends BaseRepository
         return CartItem::with([
             'product:id,name,slug,price,quantity,old_price,status',
             'product.images:id,product_id,url',
-            'variant:id,product_id,name,price,quantity',
+            'variant:id,product_id,name,price,quantity,images',
         ])
             ->where('session_id', $sessionId)
             ->whereNull('user_id')
@@ -104,7 +104,7 @@ class CartRepository extends BaseRepository
         return CartItem::with([
             'product:id,name,slug,price,quantity,old_price,status',
             'product.images:id,product_id,url',
-            'variant:id,product_id,name,price,quantity',
+            'variant:id,product_id,name,price,quantity,images',
         ])->find($itemId);
     }
 
@@ -112,7 +112,7 @@ class CartRepository extends BaseRepository
     {
         return CartItem::with([
             'product:id,name,slug,price,quantity,old_price,status',
-            'variant:id,product_id,name,price,quantity',
+            'variant:id,product_id,name,price,quantity,images',
         ])
             ->where('user_id', $userId)
             ->where('product_id', $productId)

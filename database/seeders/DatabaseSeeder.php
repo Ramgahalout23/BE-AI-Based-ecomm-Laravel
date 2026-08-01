@@ -14,6 +14,7 @@ use App\Models\Shipping;
 use App\Models\Order;
 use App\Models\ProductVariant;
 use App\Models\ProductImage;
+use App\Models\ProductAttribute;
 use App\Models\Inventory;
 use App\Models\Product;
 use App\Models\Category;
@@ -59,6 +60,7 @@ class DatabaseSeeder extends Seeder
         Order::truncate();
         ProductVariant::truncate();
         ProductImage::truncate();
+        ProductAttribute::truncate();
         Inventory::truncate();
         Product::truncate();
         Category::truncate();
@@ -111,6 +113,7 @@ class DatabaseSeeder extends Seeder
 
         // Product-dependent seeders — must run after ProductSeeder
         $this->call(ProductSeeder::class);
+        $this->call(BackfillProductGsmSeeder::class);
         $this->call(ReviewSeeder::class);
         $this->call(ReelSeeder::class);
         $this->call(OrderSeeder::class);

@@ -318,10 +318,10 @@ class ProductImportService
                         'product_id' => $product->id,
                         'name' => $row['name'],
                         'sku' => $sku.'-DEFAULT',
-                        'attributes' => json_encode([]),
+                        'attributes' => [],
                         'price' => $row['price'],
                         'quantity' => $row['quantity'] ?? 0,
-                        'images' => json_encode($row['images'] ?? []),
+                        'images' => $row['images'] ?? [],
                     ]);
 
                     // Create variant row if variant columns were provided
@@ -338,10 +338,10 @@ class ProductImportService
                             'product_id' => $product->id,
                             'name' => implode(' / ', array_filter([$row['variant_color'] ?? null, $row['variant_size'] ?? null])) ?: 'Variant',
                             'sku' => $row['variant_sku'] ?? $sku.'-VAR',
-                            'attributes' => json_encode($variantAttrs),
+                            'attributes' => $variantAttrs,
                             'price' => $row['variant_price'] ?? $row['price'],
                             'quantity' => $row['variant_quantity'] ?? $row['quantity'] ?? 0,
-                            'images' => '[]',
+                            'images' => [],
                         ]);
                     }
 

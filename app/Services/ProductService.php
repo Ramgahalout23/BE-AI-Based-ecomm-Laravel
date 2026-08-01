@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\ProductAttribute;
 use App\Models\ProductVariant;
 use App\Repositories\ProductRepository;
 use App\Exceptions\AppError;
@@ -121,6 +122,27 @@ class ProductService
     }
 
     /**
+     * Convert the product_attributes relation rows (name/value pairs) into a
+     * key-value map (e.g. ['gsm' => '240', 'fabric' => 'Heavyweight Cotton'])
+     * so the frontend can read product.attributes?.gsm directly.
+     */
+    private function mapProductAttributes(array $product): array
+    {
+        if (isset($product['attributes']) && is_array($product['attributes'])) {
+            $map = [];
+            foreach ($product['attributes'] as $attr) {
+                if (is_array($attr) && isset($attr['name'])) {
+                    $map[$attr['name']] = (string) ($attr['value'] ?? '');
+                }
+            }
+            $product['attributes'] = $map;
+        } elseif (!array_key_exists('attributes', $product)) {
+            $product['attributes'] = [];
+        }
+        return $product;
+    }
+
+    /**
      * Decode variant attributes and compute sizes/colors for a list of products.
      * This ensures the frontend receives proper attribute objects (not double-encoded strings)
      * AND computed sizes/colors arrays on every product, matching single-product detail responses.
@@ -131,6 +153,8 @@ class ProductService
         return array_map(function (array $product): array {
             // Map snake_case DB fields to camelCase for the frontend
             $product = $this->productToCamelCase($product);
+            // Flatten product_attributes relation into a key-value map
+            $product = $this->mapProductAttributes($product);
 
             if (isset($product['variants']) && is_array($product['variants'])) {
                 $sizes = [];
@@ -168,6 +192,8 @@ class ProductService
     {
         // Map snake_case DB fields to camelCase for the frontend
         $productData = $this->productToCamelCase($productData);
+        // Flatten product_attributes relation into a key-value map
+        $productData = $this->mapProductAttributes($productData);
 
         // Load variants if not already loaded
         if (isset($productData['variants']) && is_array($productData['variants'])) {
@@ -216,7 +242,15 @@ class ProductService
         $data['slug'] = Str::slug($data['name']) . '-' . Str::random(6);
         $data['status'] = $data['status'] ?? 'DRAFT';
 
+        // Product attributes (fabric, gsm, etc.) are stored in product_attributes table
+        $attributes = $data['attributes'] ?? null;
+        unset($data['attributes']);
+
         $product = $this->productRepository->create($data);
+
+        if (is_array($attributes)) {
+            $this->syncAttributes($product->id, $attributes);
+        }
 
         // Clear cached lists so new product appears immediately
         $this->clearListCache();
@@ -228,7 +262,7 @@ class ProductService
                 'product_id' => $product->id,
                 'name' => $product->name,
                 'sku' => ($data['sku'] ?? $product->sku ?? strtoupper(substr($product->name, 0, 3)) . '-' . substr($product->id, 0, 6)) . '-DEFAULT',
-                'attributes' => json_encode([]),
+                'attributes' => [],
                 'price' => $data['price'] ?? 0,
                 'quantity' => $data['quantity'] ?? 0,
             ]);
@@ -256,10 +290,56 @@ class ProductService
             if ($existing) throw AppError::conflict("SKU {$data['sku']} already in use");
         }
 
+        // Product attributes (fabric, gsm, etc.) are stored in product_attributes table
+        $attributes = $data['attributes'] ?? null;
+        unset($data['attributes']);
+
         $product = $this->productRepository->update($id, $data);
+
+        if (is_array($attributes)) {
+            $this->syncAttributes($id, $attributes);
+        }
+
         $this->clearListCache();
         Cache::forget('homepage_all');
         return $product->toArray();
+    }
+
+    /**
+     * Persist product attributes (key-value pairs) into the product_attributes
+     * table using upsert semantics keyed on (product_id, name).
+     *
+     * Since the frontend omits cleared fields from the submitted set, any
+     * attribute NOT present in $attributes is deleted here so stale values
+     * (e.g. a fabric weight the admin removed) don't linger in the DB.
+     */
+    private function syncAttributes(string $productId, array $attributes): void
+    {
+        $submitted = [];
+        foreach ($attributes as $name => $value) {
+            if (!is_string($name) || $name === '') {
+                continue;
+            }
+            $submitted[] = $name;
+            if (!is_scalar($value) || $value === '') {
+                continue;
+            }
+            ProductAttribute::updateOrCreate(
+                ['product_id' => $productId, 'name' => $name],
+                ['value' => (string) $value]
+            );
+        }
+
+        // Remove rows the admin cleared. When the submitted set is empty the
+        // admin cleared every attribute, so delete all rows for the product
+        // (Laravel's whereNotIn with an empty array matches nothing).
+        if (empty($submitted)) {
+            ProductAttribute::where('product_id', $productId)->delete();
+        } else {
+            ProductAttribute::where('product_id', $productId)
+                ->whereNotIn('name', $submitted)
+                ->delete();
+        }
     }
 
     public function delete(string $id): void

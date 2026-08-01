@@ -48,7 +48,10 @@ class CartService
                 'variantStock' => $item->variant?->quantity !== null ? (int) $item->variant->quantity : null,
                 'price' => (float) $price,
                 'total' => (float) $price * $qty,
-                'imageUrl' => $item->product?->images?->first()?->url ?? null,
+                // Prefer the variant's own first image so the cart shows the selected color/size
+                'imageUrl' => $item->variant_id && is_array($item->variant?->images) && !empty($item->variant->images)
+                    ? $item->variant->images[0]
+                    : ($item->product?->images?->first()?->url ?? null),
                 'slug' => $item->product?->slug ?? null,
                 'oldPrice' => $item->product?->old_price ? (float) $item->product->old_price : null,
             ];

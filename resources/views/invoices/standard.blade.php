@@ -115,8 +115,8 @@
                 <td>{{ $item->product->name ?? 'Product' }}</td>
                 <td>{{ $item->product->sku ?? $item->variant_id ?? '—' }}</td>
                 <td class="text-center">{{ $item->quantity }}</td>
-                <td class="text-right">${{ number_format($item->price, 2) }}</td>
-                <td class="text-right">${{ number_format($item->total ?? ($item->price * $item->quantity), 2) }}</td>
+                <td class="text-right">{{ $currencySymbol }} {{ number_format($item->price, 2) }}</td>
+                <td class="text-right">{{ $currencySymbol }} {{ number_format($item->total ?? ($item->price * $item->quantity), 2) }}</td>
             </tr>
             @empty
             <tr><td colspan="5" class="text-center">No items found</td></tr>
@@ -125,13 +125,30 @@
     </table>
 
     <table class="totals">
-        <tr><td style="width:60%;">Subtotal</td><td class="text-right">${{ number_format($order->subtotal ?? 0, 2) }}</td></tr>
-        <tr><td>Tax</td><td class="text-right">${{ number_format($order->tax ?? 0, 2) }}</td></tr>
-        <tr><td>Shipping</td><td class="text-right">${{ number_format($order->shipping_cost ?? 0, 2) }}</td></tr>
-        @if($order->discount > 0)
-        <tr><td>Discount</td><td class="text-right">-${{ number_format($order->discount, 2) }}</td></tr>
+        <tr><td style="width:60%;">Subtotal</td><td class="text-right">{{ $currencySymbol }} {{ number_format($order->subtotal ?? 0, 2) }}</td></tr>
+        {{-- Tax line — shown only when a separate tax was charged (exclusive mode), matching the checkout display --}}
+        @if(($order->tax ?? 0) > 0)
+        <tr><td>Tax</td><td class="text-right">{{ $currencySymbol }} {{ number_format($order->tax, 2) }}</td></tr>
         @endif
-        <tr class="total-row"><td>Total</td><td class="text-right">${{ number_format($order->total ?? 0, 2) }}</td></tr>
+        <tr><td>Shipping</td><td class="text-right">{{ $currencySymbol }} {{ number_format($order->shipping_cost ?? 0, 2) }}</td></tr>
+        {{-- Bundle Discount — shown separately when it was stored at checkout --}}
+        @if(($order->bundle_discount ?? 0) > 0)
+        <tr><td>Bundle Discount</td><td class="text-right">-{{ $currencySymbol }} {{ number_format($order->bundle_discount, 2) }}</td></tr>
+        @endif
+        {{-- Flash Sale Discount — shown separately when it was stored at checkout --}}
+        @if(($order->flash_sale_discount ?? 0) > 0)
+        <tr><td>Flash Sale Discount</td><td class="text-right">-{{ $currencySymbol }} {{ number_format($order->flash_sale_discount, 2) }}</td></tr>
+        @endif
+        {{-- Remainder discount (e.g. coupon, or legacy combined orders) --}}
+        @php $otherDiscount = ($order->discount ?? 0) - ($order->bundle_discount ?? 0) - ($order->flash_sale_discount ?? 0); @endphp
+        @if($otherDiscount > 0)
+        <tr><td>Discount</td><td class="text-right">-{{ $currencySymbol }} {{ number_format($otherDiscount, 2) }}</td></tr>
+        @endif
+        <tr class="total-row"><td>Total</td><td class="text-right">{{ $currencySymbol }} {{ number_format($order->total ?? 0, 2) }}</td></tr>
+        {{-- Inclusive pricing — prices already include tax, mirroring the checkout note --}}
+        @if(!(($order->tax ?? 0) > 0))
+        <tr><td colspan="2" style="text-align:right;font-size:8px;color:#6c757d;padding-top:2px;">Inclusive of all taxes</td></tr>
+        @endif
     </table>
 
     <div class="footer">
