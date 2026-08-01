@@ -9,9 +9,12 @@ use App\Models\ShippingZone;
 use App\Models\ShippingRate;
 use App\Models\Order;
 use Illuminate\Support\Facades\Cache;
+use App\Traits\CacheKeyRegistry;
 
 class ShippingService
 {
+    use CacheKeyRegistry;
+
     public function __construct(
         protected ShippingRepository $shippingRepository
     ) {}
@@ -27,7 +30,7 @@ class ShippingService
 
     public function getZones(): array
     {
-        return Cache::remember('shipping_zones', 3600, function () {
+        return $this->cacheWithTracking('shipping_zones', 3600, function () {
             $zones = $this->shippingRepository->getAllZones()->toArray();
             // Map snake_case fields and add 'regions' from 'countries' for frontend compat
             return array_map(function ($zone) {

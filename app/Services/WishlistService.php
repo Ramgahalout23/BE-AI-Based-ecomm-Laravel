@@ -10,9 +10,12 @@ use App\Models\SharedWishlist;
 use App\Models\Product;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
+use App\Traits\CacheKeyRegistry;
 
 class WishlistService
 {
+    use CacheKeyRegistry;
+
     public function __construct(
         protected WishlistRepository $wishlistRepository
     ) {}
@@ -50,7 +53,7 @@ class WishlistService
         if ($limit < 1 || $limit > 100) throw AppError::validation('Limit must be between 1 and 100');
 
         $cacheKey = $this->versionedWishlistKey($userId, $page, $limit);
-        return Cache::remember($cacheKey, 300, function () use ($userId, $page, $limit) {
+        return $this->cacheWithTracking($cacheKey, 300, function () use ($userId, $page, $limit) {
             return $this->wishlistRepository->getUserWishlist($userId, $page, $limit);
         });
     }
@@ -93,14 +96,14 @@ class WishlistService
     public function check(string $userId, string $productId): array
     {
         if (empty($productId)) throw AppError::validation('Product ID is required');
-        return Cache::remember("wishlist:{$userId}:check:{$productId}", 300, function () use ($userId, $productId) {
+        return $this->cacheWithTracking("wishlist:{$userId}:check:{$productId}", 300, function () use ($userId, $productId) {
             return ['wishlisted' => $this->wishlistRepository->checkProduct($userId, $productId)];
         });
     }
 
     public function getCount(string $userId): array
     {
-        return Cache::remember("wishlist:{$userId}:count", 300, function () use ($userId) {
+        return $this->cacheWithTracking("wishlist:{$userId}:count", 300, function () use ($userId) {
             return ['count' => $this->wishlistRepository->getCount($userId)];
         });
     }

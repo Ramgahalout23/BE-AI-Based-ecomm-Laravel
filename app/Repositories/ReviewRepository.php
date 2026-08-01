@@ -7,9 +7,12 @@ use App\Models\Product;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use App\Traits\CacheKeyRegistry;
 
 class ReviewRepository extends BaseRepository
 {
+    use CacheKeyRegistry;
+
     protected function modelClass(): string
     {
         return Review::class;
@@ -40,7 +43,7 @@ class ReviewRepository extends BaseRepository
         $version = $this->getReviewVersion($productId);
         $cacheKey = "reviews_product:{$productId}:v{$version}:page{$page}:limit{$perPage}";
 
-        return Cache::remember($cacheKey, 60, function () use ($productId, $page, $perPage, $onlyModerated) {
+        return $this->cacheWithTracking($cacheKey, 60, function () use ($productId, $page, $perPage, $onlyModerated) {
             $query = Review::with(['user' => fn($q) => $q->select('id', 'first_name', 'last_name', 'email', 'avatar')])
                 ->where('product_id', $productId)
                 ->where('is_flagged', false);
@@ -95,7 +98,7 @@ class ReviewRepository extends BaseRepository
         $version = $this->getReviewVersion($productId);
         $cacheKey = "reviews_stats:{$productId}:v{$version}";
 
-        return Cache::remember($cacheKey, 120, function () use ($productId) {
+        return $this->cacheWithTracking($cacheKey, 120, function () use ($productId) {
             $distribution = Review::where('product_id', $productId)
                 ->where('is_flagged', false)
                 ->where('is_moderated', true)
@@ -252,7 +255,7 @@ class ReviewRepository extends BaseRepository
         $version = $this->getReviewVersion($productId);
         $cacheKey = "reviews_verified:{$productId}:v{$version}:page{$page}:limit{$perPage}";
 
-        return Cache::remember($cacheKey, 60, function () use ($productId, $page, $perPage) {
+        return $this->cacheWithTracking($cacheKey, 60, function () use ($productId, $page, $perPage) {
             $query = Review::with(['user' => fn($q) => $q->select('id', 'first_name', 'last_name', 'email', 'avatar')])
                 ->where('product_id', $productId)
                 ->where('is_verified', true)

@@ -146,6 +146,7 @@ class CuratedLookController extends Controller
         $look = CuratedLook::create($validated);
 
         Cache::forget('curated_looks_data');
+        $this->invalidateHomepageCache();
 
         return response()->json([
             'success' => true,
@@ -177,6 +178,7 @@ class CuratedLookController extends Controller
         $look->update($validated);
 
         Cache::forget('curated_looks_data');
+        $this->invalidateHomepageCache();
 
         return response()->json([
             'success' => true,
@@ -195,6 +197,7 @@ class CuratedLookController extends Controller
         $look->delete();
 
         Cache::forget('curated_looks_data');
+        $this->invalidateHomepageCache();
 
         return response()->json([
             'success' => true,
@@ -219,6 +222,7 @@ class CuratedLookController extends Controller
         }
 
         Cache::forget('curated_looks_data');
+        $this->invalidateHomepageCache();
 
         return response()->json([
             'success' => true,
@@ -251,11 +255,23 @@ class CuratedLookController extends Controller
         $look->load('products');
 
         Cache::forget('curated_looks_data');
+        $this->invalidateHomepageCache();
 
         return response()->json([
             'success' => true,
             'message' => 'Products synced',
             'data' => $look,
         ]);
+    }
+
+    /**
+     * Invalidate the consolidated homepage cache so curated-look changes
+     * appear on the storefront immediately (homepage_all lives in
+     * HomepageController's cache registry, so clearing this controller's
+     * own keys alone would miss it).
+     */
+    private function invalidateHomepageCache(): void
+    {
+        Cache::forget('homepage_all');
     }
 }

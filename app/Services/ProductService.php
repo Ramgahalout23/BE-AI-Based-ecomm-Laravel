@@ -8,9 +8,12 @@ use App\Repositories\ProductRepository;
 use App\Exceptions\AppError;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
+use App\Traits\CacheKeyRegistry;
 
 class ProductService
 {
+    use CacheKeyRegistry;
+
     public function __construct(
         protected ProductRepository $productRepository
     ) {}
@@ -48,7 +51,7 @@ class ProductService
     public function getAll(array $filters = []): array
     {
         $cacheKey = $this->versionedCacheKey('getAll', $filters);
-        return Cache::remember($cacheKey, 300, function () use ($filters) {
+        return $this->cacheWithTracking($cacheKey, 300, function () use ($filters) {
             $paginator = $this->productRepository->findMany($filters);
             $products = $this->decodeVariantAttributesInList(
                 collect($paginator->items())->toArray()
@@ -73,7 +76,7 @@ class ProductService
         $version = Cache::get('products_cache_version', 0);
         $versionedKey = 'product:detail:v' . $version . ':' . $id;
 
-        return Cache::remember($versionedKey, 60, function () use ($id) {
+        return $this->cacheWithTracking($versionedKey, 60, function () use ($id) {
             // Support slug, UUID, and numeric ID lookups
             $product = $this->productRepository->findBySlug($id);
 
@@ -361,7 +364,7 @@ class ProductService
     public function getFeatured(int $limit = 8): array
     {
         $cacheKey = $this->versionedCacheKey('featured', ['limit' => $limit]);
-        return Cache::remember($cacheKey, 600, function () use ($limit) {
+        return $this->cacheWithTracking($cacheKey, 600, function () use ($limit) {
             return $this->decodeVariantAttributesInList($this->productRepository->getFeatured($limit)->toArray());
         });
     }
@@ -369,7 +372,7 @@ class ProductService
     public function getNewArrivals(int $limit = 8): array
     {
         $cacheKey = $this->versionedCacheKey('newArrivals', ['limit' => $limit]);
-        return Cache::remember($cacheKey, 600, function () use ($limit) {
+        return $this->cacheWithTracking($cacheKey, 600, function () use ($limit) {
             return $this->decodeVariantAttributesInList($this->productRepository->getNewArrivals($limit)->toArray());
         });
     }
@@ -377,7 +380,7 @@ class ProductService
     public function getBestSellers(int $limit = 8): array
     {
         $cacheKey = $this->versionedCacheKey('bestSellers', ['limit' => $limit]);
-        return Cache::remember($cacheKey, 600, function () use ($limit) {
+        return $this->cacheWithTracking($cacheKey, 600, function () use ($limit) {
             return $this->decodeVariantAttributesInList($this->productRepository->getBestSellers($limit)->toArray());
         });
     }
@@ -392,7 +395,7 @@ class ProductService
     {
         $filters['category_id'] = $categoryId;
         $cacheKey = $this->versionedCacheKey('byCategory', $filters);
-        return Cache::remember($cacheKey, 300, function () use ($filters) {
+        return $this->cacheWithTracking($cacheKey, 300, function () use ($filters) {
             $paginator = $this->productRepository->findMany($filters);
             $products = $this->decodeVariantAttributesInList(
                 collect($paginator->items())->toArray()
@@ -464,7 +467,7 @@ class ProductService
     public function getRelated(string $productId, int $limit = 8): array
     {
         $cacheKey = $this->versionedCacheKey('related', ['id' => $productId, 'limit' => $limit]);
-        return Cache::remember($cacheKey, 600, function () use ($productId, $limit) {
+        return $this->cacheWithTracking($cacheKey, 600, function () use ($productId, $limit) {
             $categoryId = \App\Models\Product::where('id', $productId)->value('category_id');
             if (!$categoryId) {
                 return [];

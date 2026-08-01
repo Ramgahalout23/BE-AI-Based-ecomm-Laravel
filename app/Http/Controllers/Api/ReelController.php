@@ -135,17 +135,27 @@ class ReelController extends Controller
         Cache::forever('reels_admin_cache_version', $this->getAdminCacheVersion() + 1);
     }
 
+    /**
+     * Invalidate the consolidated homepage cache so reel changes appear
+     * on the storefront immediately (homepage_all lives in HomepageController's
+     * cache registry, so clearTrackedCache() alone would miss it).
+     */
+    private function invalidateHomepageCache(): void
+    {
+        Cache::forget('homepage_all');
+    }
+
     public function adminIndex(Request $request): JsonResponse
     {
         $version = $this->getAdminCacheVersion();
         $page = (int) ($request->page ?? 1);
-        $perPage = (int) ($request->per_page ?? 50);
+        $perPage = (int) ($request->per_page ?? $request->limit ?? 50);
         $search = $request->search ?? '';
         $isActiveFilter = $request->has('is_active') ? ($request->is_active === 'true' || $request->is_active === '1' ? '1' : '0') : '';
 
         $cacheKey = 'reels_admin:v' . $version . ':p' . $page . ':pp' . $perPage . ':s' . md5($search) . ':a' . $isActiveFilter;
 
-        return $this->cacheWithTracking($cacheKey, 300, function () use ($page, $perPage, $search, $isActiveFilter) {
+        $payload = $this->cacheWithTracking($cacheKey, 300, function () use ($page, $perPage, $search, $isActiveFilter) {
             $query = Reel::select('id', 'title', 'description', 'video_url', 'image_url', 'link_url', 'display_order', 'is_active', 'created_at')
                 ->withCount('likes')
                 ->orderBy('display_order')
@@ -161,7 +171,7 @@ class ReelController extends Controller
 
             $reels = $query->paginate($perPage, ['*'], 'page', $page);
 
-            return response()->json([
+            return [
                 'success' => true,
                 'data' => $reels->items(),
                 'pagination' => [
@@ -170,8 +180,10 @@ class ReelController extends Controller
                     'total' => $reels->total(),
                     'per_page' => $reels->perPage(),
                 ],
-            ])->getData();
+            ];
         });
+
+        return response()->json($payload);
     }
 
     /**
@@ -216,6 +228,7 @@ class ReelController extends Controller
 
         $this->clearTrackedCache();
         $this->bumpAdminCacheVersion();
+        $this->invalidateHomepageCache();
 
         return response()->json([
             'success' => true,
@@ -258,6 +271,7 @@ class ReelController extends Controller
 
         $this->clearTrackedCache();
         $this->bumpAdminCacheVersion();
+        $this->invalidateHomepageCache();
 
         return response()->json([
             'success' => true,
@@ -277,6 +291,7 @@ class ReelController extends Controller
 
         $this->clearTrackedCache();
         $this->bumpAdminCacheVersion();
+        $this->invalidateHomepageCache();
 
         return response()->json([
             'success' => true,
@@ -295,6 +310,7 @@ class ReelController extends Controller
 
         $this->clearTrackedCache();
         $this->bumpAdminCacheVersion();
+        $this->invalidateHomepageCache();
 
         return response()->json([
             'success' => true,
@@ -321,6 +337,7 @@ class ReelController extends Controller
 
         $this->clearTrackedCache();
         $this->bumpAdminCacheVersion();
+        $this->invalidateHomepageCache();
 
         return response()->json([
             'success' => true,

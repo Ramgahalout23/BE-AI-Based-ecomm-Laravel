@@ -3,6 +3,8 @@
 namespace App\Traits;
 
 use Illuminate\Support\Facades\Cache;
+use InvalidArgumentException;
+use Symfony\Component\HttpFoundation\Response;
 
 /**
  * Cache key registry trait.
@@ -35,11 +37,61 @@ trait CacheKeyRegistry
     /**
      * Cache a value and track the key in the registry so clearTrackedCache()
      * can clear it even when keys have dynamic parameters.
+     *
+     * The callback result is validated by assertCacheableValue() before it is
+     * written to the cache store — response objects and stdClass payloads are
+     * rejected (see regression guard below).
      */
     protected function cacheWithTracking(string $key, int $ttl, callable $callback): mixed
     {
         $this->trackCacheKey($key);
-        return Cache::remember($key, $ttl, $callback);
+
+        return Cache::remember($key, $ttl, function () use ($callback, $key) {
+            $value = $callback();
+            $this->assertCacheableValue($value, $key);
+
+            return $value;
+        });
+    }
+
+    /**
+     * Regression guard for cacheWithTracking():
+     *
+     * Closures must return serializable payloads - never Response objects or
+     * stdClass (the shape produced by response()->json(...)->getData(), which
+     * caused a TypeError/500 in ReelController::adminIndex()).
+     *
+     * Allowed: null, scalars, arrays, and JsonSerializable objects
+     * (Eloquent models/collections are cached legitimately across the app).
+     */
+    protected function assertCacheableValue(mixed $value, string $key): void
+    {
+        if (is_null($value) || is_scalar($value) || is_array($value)) {
+            return;
+        }
+
+        if ($value instanceof Response) {
+            throw new InvalidArgumentException(
+                "cacheWithTracking('{$key}'): closure returned a " . get_class($value) . ". "
+                . 'Return a plain array/primitive instead of a response object - build the response AFTER the cache call.'
+            );
+        }
+
+        if ($value instanceof \stdClass) {
+            throw new InvalidArgumentException(
+                "cacheWithTracking('{$key}'): closure returned a stdClass (likely from response()->json(...)->getData()). "
+                . 'Return a plain array instead - the cache stores data, not response payloads.'
+            );
+        }
+
+        if ($value instanceof \JsonSerializable) {
+            return;
+        }
+
+        throw new InvalidArgumentException(
+            "cacheWithTracking('{$key}'): closure returned an unsupported value of type "
+            . get_debug_type($value) . '. Return a serializable array, scalar, or JsonSerializable object.'
+        );
     }
 
     /**

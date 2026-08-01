@@ -164,6 +164,7 @@ class PromotionRepository extends BaseRepository
     private function clearActiveCache(): void
     {
         $this->clearTrackedCache();
+        Cache::forget('homepage_all');
     }
 
     /**
