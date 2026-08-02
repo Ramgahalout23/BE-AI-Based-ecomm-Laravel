@@ -30,6 +30,18 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // ── Production safety guard: never run with the 'log' mailer ──
+        // Local dev uses MAIL_MAILER=log (the mailpit SMTP host isn't reachable
+        // on this PC). If that ever ships to production, every customer email
+        // (order confirmations, password resets, welcome emails) would silently
+        // go to the log file instead of reaching customers. Log a critical entry
+        // so it is impossible to miss.
+        if ($this->app->environment('production') && config('mail.default') === 'log') {
+            Log::critical('[MAIL CONFIG] App is in PRODUCTION but MAIL_MAILER=log — ' .
+                'customer emails are NOT being sent. Set MAIL_MAILER=smtp in .env ' .
+                '(e.g. smtp.hostinger.com:465/ssl) or configure SMTP in Admin → Settings.');
+        }
+
         // ── Auto-sync review_count and rating on review changes ──
         Review::observe(ReviewObserver::class);
 

@@ -19,6 +19,12 @@ return [
     'except' => [
         'telescope*',
         'horizon*',
+        // ⚡ PERFORMANCE: Skip Debugbar instrumentation for ALL API endpoints.
+        // Every API response (storefront + admin) previously ran Debugbar's
+        // collectors (db backtraces, gate, models, mail, session...) which
+        // added significant per-request overhead. The web admin UI keeps the
+        // debugbar; the JSON API does not need it.
+        'api/*',
     ],
 
     /*

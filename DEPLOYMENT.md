@@ -61,7 +61,7 @@ Edit `.env` with your production settings:
 | `BROADCAST_DRIVER` | `null` | SocketService handles real-time directly |
 | `SOCKET_SERVER_URL` | `https://your-socket-server.com` | Node.js Socket.IO server URL |
 | `INTERNAL_SOCKET_KEY` | (random 48-char secret) | Shared secret between Laravel & Socket server |
-| `MAIL_*` | (your SMTP settings) | For transactional emails |
+| `MAIL_*` | `MAIL_MAILER=smtp` + `smtp.hostinger.com:465` / `ssl` (or your SMTP) | For transactional emails — **never use `MAIL_MAILER=log` in production** (see PERFORMANCE-FIXES.md) |
 | `SANCTUM_STATEFUL_DOMAINS` | `yourdomain.com` | SPA authentication |
 | `SESSION_DOMAIN` | `.yourdomain.com` | Shared session across subdomains |
 
