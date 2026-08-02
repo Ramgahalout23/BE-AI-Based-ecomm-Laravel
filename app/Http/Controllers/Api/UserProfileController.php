@@ -169,7 +169,7 @@ class UserProfileController extends Controller
                 'data' => ['url' => $result['url'], 'path' => $result['path']],
             ]);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
+            return $this->handleUnexpectedException($e, 422);
         }
     }
 }

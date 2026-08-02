@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Product;
 use App\Services\AdminService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 
 /**
  * @deprecated Blade admin views are no longer used (admin is React SPA).
@@ -96,7 +97,12 @@ class AdminOrderController extends Controller
             return redirect()->route('admin.inventory.index')
                 ->with('success', 'Stock reduced successfully');
         } catch (\Exception $e) {
-            return back()->with('error', $e->getMessage());
+            // Log the real exception server-side, but flash a generic message so
+            // raw SQL/driver details never leak to the admin UI.
+            Log::error('[AdminOrderController] Failed to reduce stock: ' . $e->getMessage(), [
+                'product_id' => $validated['product_id'],
+            ]);
+            return back()->with('error', 'Failed to reduce stock. Please try again.');
         }
     }
 

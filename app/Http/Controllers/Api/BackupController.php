@@ -37,7 +37,7 @@ class BackupController extends Controller
             CreateBackupJob::dispatch($backupId);
             return response()->json(['success' => true, 'message' => 'Backup queued for processing', 'data' => ['backup_id' => $backupId, 'status' => 'queued']], 202);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+            return $this->handleUnexpectedException($e);
         }
     }
 
@@ -61,7 +61,7 @@ class BackupController extends Controller
             $this->backupService->deleteBackup($filename);
             return response()->json(['success' => true, 'message' => 'Backup deleted']);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 404);
+            return $this->handleUnexpectedException($e, 404);
         }
     }
 

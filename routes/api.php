@@ -410,6 +410,11 @@ Route::prefix('v1')->group(function () {
         Route::post('/chat/{ticketId}/messages', [ChatController::class, 'sendMessage']);
         Route::post('/chat/{ticketId}/typing', [ChatController::class, 'sendTyping']);
         Route::get('/chat/{ticketId}/messages', [ChatController::class, 'getMessages']);
+
+        // ── Broadcasting Channel Auth (Pusher) ──
+        // The BroadcastServiceProvider is intentionally disabled and BROADCAST_DRIVER=log,
+        // so pusher-js channel auth is served here using the app's own Pusher instance.
+        Route::post('/broadcasting/auth', [BroadcastingController::class, 'authenticate']);
     });
 
     // ── Admin Shipping Routes (inside admin middleware group) ──

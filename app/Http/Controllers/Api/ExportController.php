@@ -53,7 +53,7 @@ class ExportController extends Controller
                 ],
             ]);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+            return $this->handleUnexpectedException($e);
         }
     }
 
@@ -105,7 +105,7 @@ class ExportController extends Controller
                 $exportJob->file_name ?? 'export.csv'
             );
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 404);
+            return $this->handleUnexpectedException($e, 404);
         }
     }
 
@@ -155,7 +155,7 @@ class ExportController extends Controller
                 ],
             ]);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+            return $this->handleUnexpectedException($e);
         }
     }
 
@@ -188,7 +188,7 @@ class ExportController extends Controller
                 ],
             ]);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+            return $this->handleUnexpectedException($e);
         }
     }
 

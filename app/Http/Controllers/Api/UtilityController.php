@@ -21,7 +21,7 @@ class UtilityController extends Controller
             $html = $this->emailService->generatePreviewHtml();
             return response()->json(['success' => true, 'data' => ['html' => $html]]);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+            return $this->handleUnexpectedException($e);
         }
     }
 

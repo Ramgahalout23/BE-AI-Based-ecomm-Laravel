@@ -86,7 +86,7 @@ class TicketService
         }
 
         $ticket = $this->ticketRepository->create([
-            'ticket_number' => 'TKT-' . now()->timestamp . '-' . strtoupper(substr(uniqid(), -6)),
+            'ticket_number' => $data['ticket_number'] ?? 'TKT-' . now()->timestamp . '-' . strtoupper(substr(uniqid(), -6)),
             'user_id' => $userId,
             'order_id' => $data['order_id'] ?? null,
             'subject' => $data['subject'],

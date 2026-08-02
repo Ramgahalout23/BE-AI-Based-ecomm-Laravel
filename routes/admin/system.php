@@ -72,6 +72,8 @@ Route::post('/refunds/{refundId}/reject', [PaymentController::class, 'rejectRefu
 
 // ── Chat (Admin) ──
 Route::get('/chat/conversations', [ChatController::class, 'getAdminConversations']);
+Route::get('/chat/{ticketId}/messages', [ChatController::class, 'getAdminMessages']);
+Route::post('/chat/{ticketId}/messages', [ChatController::class, 'adminSendMessage']);
 Route::patch('/chat/{ticketId}/status', [ChatController::class, 'updateStatus']);
 Route::get('/chat/stats', [ChatController::class, 'getStats']);
 

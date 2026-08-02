@@ -97,9 +97,7 @@ class PromotionController extends Controller
                 'message' => 'Promotion created',
                 'data' => $this->promotionService->createWithRelations($validated, $productIds, $categoryIds),
             ], 201);
-        } catch (AppError $e) { return $e->render(); } catch (\Illuminate\Validation\ValidationException $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage(), 'errors' => $e->errors()], 422);
-        }
+        } catch (AppError $e) { return $e->render(); } catch (\Illuminate\Validation\ValidationException $e) { throw $e; }
     }
 
     public function update(Request $request, string $id): JsonResponse

@@ -307,10 +307,7 @@ class AuthController extends Controller
                 ],
             ]);
         } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => "Failed to initiate {$provider} OAuth: " . $e->getMessage(),
-            ], 500);
+            return $this->handleUnexpectedException($e);
         }
     }
 
@@ -356,10 +353,7 @@ class AuthController extends Controller
                 ],
             ]);
         } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => "{$provider} authentication failed: " . $e->getMessage(),
-            ], 401);
+            return $this->handleUnexpectedException($e, 401);
         }
     }
 

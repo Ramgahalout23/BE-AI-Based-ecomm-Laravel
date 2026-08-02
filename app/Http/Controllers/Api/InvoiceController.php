@@ -25,7 +25,7 @@ class InvoiceController extends Controller
             if ($e instanceof \Illuminate\Database\Eloquent\ModelNotFoundException) {
                 return response()->json(['success' => false, 'message' => 'Order not found'], 404);
             }
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+            return $this->handleUnexpectedException($e);
         }
     }
 
@@ -40,7 +40,7 @@ class InvoiceController extends Controller
             if ($e instanceof \Illuminate\Database\Eloquent\ModelNotFoundException) {
                 return response()->json(['success' => false, 'message' => 'Order not found'], 404);
             }
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+            return $this->handleUnexpectedException($e);
         }
     }
 }

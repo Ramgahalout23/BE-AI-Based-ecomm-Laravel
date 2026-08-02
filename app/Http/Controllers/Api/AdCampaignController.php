@@ -91,7 +91,7 @@ class AdCampaignController extends Controller
             $report = $this->analyticsService->getPerformanceReport($request->input('days', 30));
             return response()->json(['success' => true, 'data' => $report]);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+            return $this->handleUnexpectedException($e);
         }
     }
 
@@ -103,7 +103,7 @@ class AdCampaignController extends Controller
         try {
             return response()->json(['success' => true, 'data' => $this->analyticsService->getBrandPresetPerformance()]);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+            return $this->handleUnexpectedException($e);
         }
     }
 
@@ -115,7 +115,7 @@ class AdCampaignController extends Controller
         try {
             return response()->json(['success' => true, 'data' => $this->analyticsService->getBudgetOptimization()]);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+            return $this->handleUnexpectedException($e);
         }
     }
 
@@ -127,7 +127,7 @@ class AdCampaignController extends Controller
         try {
             return response()->json(['success' => true, 'data' => $this->analyticsService->getAdTemplates()]);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+            return $this->handleUnexpectedException($e);
         }
     }
 
@@ -216,7 +216,7 @@ class AdCampaignController extends Controller
             $validated['created_by'] = $request->user()->id ?? null;
             $campaign = AdCampaign::create($validated);
             return response()->json(['success' => true, 'data' => $campaign], 201);
-        } catch (\Exception $e) { return response()->json(['success' => false, 'message' => $e->getMessage()], 422); }
+        } catch (\Exception $e) { return $this->handleUnexpectedException($e, 422); }
     }
 
     public function updateCampaign(Request $request, string $id): JsonResponse
@@ -248,7 +248,7 @@ class AdCampaignController extends Controller
         try {
             $result = $this->analyticsService->compareCampaigns($id1, $id2);
             return response()->json(['success' => true, 'data' => $result]);
-        } catch (\Exception $e) { return response()->json(['success' => false, 'message' => $e->getMessage()], 404); }
+        } catch (\Exception $e) { return $this->handleUnexpectedException($e, 404); }
     }
 
     // ── AI Copy Generation ──
@@ -261,7 +261,7 @@ class AdCampaignController extends Controller
                 'data' => $this->aiAdCopyService->generateAdCopy($request->all()),
             ]);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+            return $this->handleUnexpectedException($e);
         }
     }
 
@@ -273,7 +273,7 @@ class AdCampaignController extends Controller
                 'data' => $this->aiAdCopyService->generateVariants($request->all()),
             ]);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+            return $this->handleUnexpectedException($e);
         }
     }
 
@@ -285,7 +285,7 @@ class AdCampaignController extends Controller
                 'data' => $this->aiAdCopyService->generateFullStrategy($request->all()),
             ]);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+            return $this->handleUnexpectedException($e);
         }
     }
 
@@ -297,7 +297,7 @@ class AdCampaignController extends Controller
                 'data' => $this->aiAdCopyService->suggestAudience($request->all()),
             ]);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+            return $this->handleUnexpectedException($e);
         }
     }
 
@@ -309,7 +309,7 @@ class AdCampaignController extends Controller
                 'data' => $this->aiAdCopyService->generateBannerDesign($request->all()),
             ]);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+            return $this->handleUnexpectedException($e);
         }
     }
 
@@ -328,7 +328,7 @@ class AdCampaignController extends Controller
             $validated = $request->validate(['product_id' => 'required|string']);
             $link = AdCampaignProduct::create(['ad_campaign_id' => $id, 'product_id' => $validated['product_id']]);
             return response()->json(['success' => true, 'data' => $link], 201);
-        } catch (\Exception $e) { return response()->json(['success' => false, 'message' => $e->getMessage()], 422); }
+        } catch (\Exception $e) { return $this->handleUnexpectedException($e, 422); }
     }
 
     public function updateProductLink(Request $request, string $id, string $productId): JsonResponse
@@ -356,7 +356,7 @@ class AdCampaignController extends Controller
                 AdCampaignProduct::firstOrCreate(['ad_campaign_id' => $id, 'product_id' => $pid]);
             }
             return response()->json(['success' => true, 'message' => 'Products linked']);
-        } catch (\Exception $e) { return response()->json(['success' => false, 'message' => $e->getMessage()], 422); }
+        } catch (\Exception $e) { return $this->handleUnexpectedException($e, 422); }
     }
 
     public function generateCreativeFromProduct(string $id, string $productId): JsonResponse
@@ -389,7 +389,7 @@ class AdCampaignController extends Controller
             $campaign = AdCampaign::findOrFail($id);
             return response()->json(['success' => true, 'data' => $this->metaAdsService->pushCampaign($campaign)]);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 404);
+            return $this->handleUnexpectedException($e, 404);
         }
     }
 
@@ -399,7 +399,7 @@ class AdCampaignController extends Controller
             $campaign = AdCampaign::findOrFail($id);
             return response()->json(['success' => true, 'data' => $this->metaAdsService->syncStats($campaign)]);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 404);
+            return $this->handleUnexpectedException($e, 404);
         }
     }
 
@@ -409,7 +409,7 @@ class AdCampaignController extends Controller
             $campaign = AdCampaign::findOrFail($id);
             return response()->json(['success' => true, 'data' => $this->googleAdsService->pushCampaign($campaign)]);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 404);
+            return $this->handleUnexpectedException($e, 404);
         }
     }
 
@@ -419,7 +419,7 @@ class AdCampaignController extends Controller
             $campaign = AdCampaign::findOrFail($id);
             return response()->json(['success' => true, 'data' => $this->googleAdsService->syncStats($campaign)]);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 404);
+            return $this->handleUnexpectedException($e, 404);
         }
     }
 
@@ -429,7 +429,7 @@ class AdCampaignController extends Controller
             $campaign = AdCampaign::findOrFail($id);
             return response()->json(['success' => true, 'data' => $this->whatsAppAdsService->sendBroadcast($campaign->name)]);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 404);
+            return $this->handleUnexpectedException($e, 404);
         }
     }
 }

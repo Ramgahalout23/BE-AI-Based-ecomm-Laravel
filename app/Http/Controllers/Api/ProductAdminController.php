@@ -97,7 +97,7 @@ class ProductAdminController extends Controller
                 'data' => ['deleted' => $deleted, 'errors' => $errors],
             ]);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+            return $this->handleUnexpectedException($e);
         }
     }
 
@@ -128,7 +128,7 @@ class ProductAdminController extends Controller
         } catch (AppError $e) {
             return $e->render();
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+            return $this->handleUnexpectedException($e);
         }
     }
 }

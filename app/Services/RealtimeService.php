@@ -205,6 +205,29 @@ class RealtimeService
     }
 
     /**
+     * Authorize a private channel subscription for the Pusher auth endpoint.
+     *
+     * Returns the Pusher auth signature string (key:signature) or null when
+     * Pusher is not configured or authorization fails.
+     */
+    public function authorizeChannel(string $channel, string $socketId): ?string
+    {
+        if (!$this->pusherAvailable()) {
+            Log::warning('[Realtime] Channel auth requested but Pusher not configured. Check PUSHER_APP_* env vars.');
+            return null;
+        }
+
+        try {
+            $response = $this->pusher->authorizeChannel($channel, $socketId);
+            $decoded = json_decode($response, true);
+            return $decoded['auth'] ?? null;
+        } catch (\Throwable $e) {
+            Log::error("[Realtime] Channel auth failed for {$channel}: {$e->getMessage()}");
+            return null;
+        }
+    }
+
+    /**
      * Fire the local Laravel event (used by both drivers and for internal listeners).
      */
     protected function fireLocalEvent(string $event, array $data): void

@@ -40,7 +40,7 @@ class CampaignTemplateController extends Controller
             $validated['created_by'] = $request->user()->id ?? null;
             $template = CampaignTemplate::create($validated);
             return response()->json(['success' => true, 'data' => $template], 201);
-        } catch (\Exception $e) { return response()->json(['success' => false, 'message' => $e->getMessage()], 422); }
+        } catch (\Exception $e) { return $this->handleUnexpectedException($e, 422); }
     }
 
     public function updateTemplate(Request $request, string $id): JsonResponse
@@ -92,6 +92,6 @@ class CampaignTemplateController extends Controller
             $template = CampaignTemplate::findOrFail($validated['template_id']);
             $html = $template->content_html ?? '<p>Template: ' . $template->name . '</p>';
             return response()->json(['success' => true, 'data' => ['html' => $html, 'subject' => $template->name]]);
-        } catch (\Exception $e) { return response()->json(['success' => false, 'message' => $e->getMessage()], 422); }
+        } catch (\Exception $e) { return $this->handleUnexpectedException($e, 422); }
     }
 }

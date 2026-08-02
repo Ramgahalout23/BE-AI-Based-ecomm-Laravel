@@ -46,7 +46,7 @@ class WebhookController extends Controller
 
             return response()->json(['success' => true, 'message' => 'Webhook created', 'data' => $webhook], 201);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
+            return $this->handleUnexpectedException($e, 422);
         }
     }
 
@@ -72,7 +72,7 @@ class WebhookController extends Controller
             $webhook->update($validated);
             return response()->json(['success' => true, 'message' => 'Webhook updated', 'data' => $webhook]);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
+            return $this->handleUnexpectedException($e, 422);
         }
     }
 
@@ -87,7 +87,7 @@ class WebhookController extends Controller
             $webhook->delete();
             return response()->json(['success' => true, 'message' => 'Webhook deleted']);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 404);
+            return $this->handleUnexpectedException($e, 404);
         }
     }
 
@@ -122,7 +122,7 @@ class WebhookController extends Controller
 
             return response()->json(['success' => true, 'message' => 'Test event dispatched']);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 404);
+            return $this->handleUnexpectedException($e, 404);
         }
     }
 }

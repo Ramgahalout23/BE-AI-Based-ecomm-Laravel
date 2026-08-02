@@ -160,9 +160,7 @@ class ShippingController extends Controller
             ])->validate();
 
             return response()->json(['success' => true, 'data' => $this->shippingService->createShipping($validated)], 201);
-        } catch (AppError $e) { return $e->render(); } catch (\Illuminate\Validation\ValidationException $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage(), 'errors' => $e->errors()], 422);
-        }
+        } catch (AppError $e) { return $e->render(); } catch (\Illuminate\Validation\ValidationException $e) { throw $e; }
     }
 
     public function updateShipping(Request $request, string $id): JsonResponse
@@ -178,9 +176,7 @@ class ShippingController extends Controller
             ])->validate();
 
             return response()->json(['success' => true, 'data' => $this->shippingService->updateShipping($id, $validated)]);
-        } catch (AppError $e) { return $e->render(); } catch (\Illuminate\Validation\ValidationException $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage(), 'errors' => $e->errors()], 422);
-        }
+        } catch (AppError $e) { return $e->render(); } catch (\Illuminate\Validation\ValidationException $e) { throw $e; }
     }
 
     public function getAllShippings(Request $request): JsonResponse

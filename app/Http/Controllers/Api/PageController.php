@@ -120,10 +120,7 @@ class PageController extends Controller
                 'data' => ['total' => $count],
             ]);
         } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Failed to seed sample pages: ' . $e->getMessage(),
-            ], 500);
+            return $this->handleUnexpectedException($e);
         }
     }
 }

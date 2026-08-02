@@ -64,6 +64,8 @@ class AppError extends Exception
                 'type' => $this->errorType,
                 'message' => $this->message,
             ],
+            // Top-level convenience key so clients reading `data.message` keep working.
+            'message' => $this->message,
         ], $this->statusCode);
     }
 }

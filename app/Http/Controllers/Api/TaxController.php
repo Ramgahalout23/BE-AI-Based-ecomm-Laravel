@@ -50,7 +50,7 @@ class TaxController extends Controller
             ]);
             $rate = TaxRate::create($validated);
             return response()->json(['success' => true, 'message' => 'Tax rate created', 'data' => $rate], 201);
-        } catch (\Exception $e) { return response()->json(['success' => false, 'message' => $e->getMessage()], 422); }
+        } catch (\Exception $e) { return $this->handleUnexpectedException($e, 422); }
     }
 
     public function updateTaxRate(Request $request, string $id): JsonResponse
@@ -94,6 +94,6 @@ class TaxController extends Controller
                 $breakdown[] = ['name' => $rate->name, 'rate' => $rate->rate, 'type' => $rate->type, 'amount' => round($amount, 2)];
             }
             return response()->json(['success' => true, 'data' => ['subtotal' => $validated['subtotal'], 'tax_amount' => round($taxAmount, 2), 'total' => round($validated['subtotal'] + $taxAmount, 2), 'breakdown' => $breakdown]]);
-        } catch (\Exception $e) { return response()->json(['success' => false, 'message' => $e->getMessage()], 422); }
+        } catch (\Exception $e) { return $this->handleUnexpectedException($e, 422); }
     }
 }

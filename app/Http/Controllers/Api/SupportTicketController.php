@@ -35,7 +35,13 @@ class SupportTicketController extends Controller
             ]);
             $request->replace($input);
 
-            $validated = $request->validate(['subject' => 'required|string|max:255', 'message' => 'nullable|string', 'order_id' => 'nullable|string', 'priority' => 'nullable|string|in:LOW,MEDIUM,HIGH,URGENT']);
+            $validated = $request->validate([
+                'subject' => 'required|string|max:255',
+                'category' => 'required|string|in:ORDER,PAYMENT,SHIPPING,PRODUCT,REFUND,ACCOUNT,TECHNICAL,OTHER',
+                'message' => 'required|string',
+                'order_id' => 'nullable|string',
+                'priority' => 'nullable|string|in:LOW,MEDIUM,HIGH,URGENT',
+            ]);
             $ticket = $this->ticketService->create(Auth::id(), $validated);
             return response()->json(['success' => true, 'message' => 'Ticket created', 'data' => $ticket], 201);
         } catch (AppError $e) { return $e->render(); }

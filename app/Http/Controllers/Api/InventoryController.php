@@ -131,7 +131,7 @@ class InventoryController extends Controller
                 'data' => $inventory->load('product'),
             ]);
         } catch (AppError $e) { return $e->render(); } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+            return $this->handleUnexpectedException($e);
         }
     }
 
@@ -227,7 +227,7 @@ class InventoryController extends Controller
                 ],
             ]);
         } catch (AppError $e) { return $e->render(); } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+            return $this->handleUnexpectedException($e);
         }
     }
 
@@ -258,7 +258,7 @@ class InventoryController extends Controller
                 ],
             ]);
         } catch (AppError $e) { return $e->render(); } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+            return $this->handleUnexpectedException($e);
         }
     }
 
@@ -276,7 +276,7 @@ class InventoryController extends Controller
             $print = $request->query('print') === '1';
             return $this->barcodeLabelService->downloadLabels($print);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+            return $this->handleUnexpectedException($e);
         }
     }
 
@@ -291,7 +291,7 @@ class InventoryController extends Controller
             $print = $request->query('print') === '1';
             return $this->barcodeLabelService->downloadVariantLabel($variantId, $print);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+            return $this->handleUnexpectedException($e);
         }
     }
 
@@ -321,7 +321,7 @@ class InventoryController extends Controller
                 ],
             ]);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+            return $this->handleUnexpectedException($e);
         }
     }
 
@@ -360,7 +360,7 @@ class InventoryController extends Controller
                 ],
             ]);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+            return $this->handleUnexpectedException($e);
         }
     }
 
@@ -392,7 +392,7 @@ class InventoryController extends Controller
                 'Content-Disposition' => 'attachment; filename="' . $filename . '"',
             ]);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+            return $this->handleUnexpectedException($e);
         }
     }
 
@@ -477,7 +477,7 @@ class InventoryController extends Controller
                 'Expires' => '0',
             ]);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+            return $this->handleUnexpectedException($e);
         }
     }
 
@@ -568,7 +568,7 @@ class InventoryController extends Controller
                 ],
             ]);
         } catch (AppError $e) { return $e->render(); } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+            return $this->handleUnexpectedException($e);
         }
     }
 }

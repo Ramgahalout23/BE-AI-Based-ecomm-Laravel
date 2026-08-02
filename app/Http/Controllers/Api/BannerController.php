@@ -131,9 +131,7 @@ class BannerController extends Controller
             ])->validate();
             $validated['created_by'] = $request->user()?->id;
             return response()->json(['success' => true, 'message' => 'Banner created', 'data' => $this->bannerService->create($validated)], 201);
-        } catch (AppError $e) { return $e->render(); } catch (\Illuminate\Validation\ValidationException $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage(), 'errors' => $e->errors()], 422);
-        }
+        } catch (AppError $e) { return $e->render(); } catch (\Illuminate\Validation\ValidationException $e) { throw $e; }
     }
 
     /**
@@ -164,9 +162,7 @@ class BannerController extends Controller
                 'button_link' => 'nullable|string',
             ])->validate();
             return response()->json(['success' => true, 'data' => $this->bannerService->update($id, $validated)]);
-        } catch (AppError $e) { return $e->render(); } catch (\Illuminate\Validation\ValidationException $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage(), 'errors' => $e->errors()], 422);
-        }
+        } catch (AppError $e) { return $e->render(); } catch (\Illuminate\Validation\ValidationException $e) { throw $e; }
     }
 
     /**

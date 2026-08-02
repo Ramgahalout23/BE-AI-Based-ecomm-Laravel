@@ -430,7 +430,7 @@ class ReviewController extends Controller
                 'data' => ['url' => $result['url'], 'path' => $result['path']],
             ]);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
+            return $this->handleUnexpectedException($e, 422);
         }
     }
 
@@ -454,7 +454,7 @@ class ReviewController extends Controller
                 'data' => ['files' => $uploaded],
             ]);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
+            return $this->handleUnexpectedException($e, 422);
         }
     }
 

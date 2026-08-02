@@ -342,10 +342,7 @@ Rules:
                 ],
             ]);
         } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'AI translation failed: ' . $e->getMessage(),
-            ], 500);
+            return $this->handleUnexpectedException($e);
         }
     }
 }

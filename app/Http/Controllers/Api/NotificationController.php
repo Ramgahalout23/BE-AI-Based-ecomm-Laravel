@@ -65,7 +65,7 @@ class NotificationController extends Controller
             $this->notificationService->adminDelete($id);
             return response()->json(['success' => true, 'message' => 'Notification deleted']);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 404);
+            return $this->handleUnexpectedException($e, 404);
         }
     }
 

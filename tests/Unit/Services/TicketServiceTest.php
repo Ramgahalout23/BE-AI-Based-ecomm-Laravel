@@ -76,6 +76,49 @@ class TicketServiceTest extends TestCase
     }
 
     /** @test */
+    public function create_uses_custom_ticket_number_when_provided()
+    {
+        $userId = 'user-1';
+        $data = [
+            'subject' => 'Chat Support',
+            'description' => 'Chat initiated by user',
+            'category' => 'OTHER',
+            'ticket_number' => 'CHAT-20260802-ABC123',
+        ];
+
+        $ticket = Mockery::mock(\App\Models\SupportTicket::class);
+        $ticket->shouldReceive('fresh')->andReturnSelf();
+        $ticket->shouldReceive('load')->andReturnSelf();
+        $ticket->shouldReceive('toArray')->andReturn([
+            'id' => 'tkt-1',
+            'ticket_number' => 'CHAT-20260802-ABC123',
+            'user_id' => $userId,
+            'subject' => 'Chat Support',
+            'description' => 'Chat initiated by user',
+            'category' => 'OTHER',
+            'priority' => 'MEDIUM',
+            'status' => 'OPEN',
+            'order_id' => null,
+            'assigned_to' => null,
+        ]);
+
+        $this->ticketRepository->shouldReceive('create')
+            ->once()
+            ->with(Mockery::on(function ($arg) {
+                return $arg['ticket_number'] === 'CHAT-20260802-ABC123'
+                    && $arg['priority'] === 'MEDIUM'
+                    && $arg['status'] === 'OPEN'
+                    && $arg['category'] === 'OTHER';
+            }))
+            ->andReturn($ticket);
+
+        $result = $this->ticketService->create($userId, $data);
+
+        $this->assertEquals('CHAT-20260802-ABC123', $result['ticket_number']);
+        $this->assertEquals('MEDIUM', $result['priority']);
+    }
+
+    /** @test */
     public function create_creates_ticket_with_initial_message()
     {
         $userId = 'user-1';

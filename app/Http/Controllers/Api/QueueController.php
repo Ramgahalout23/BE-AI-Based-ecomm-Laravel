@@ -33,7 +33,7 @@ class QueueController extends Controller
                 ],
             ]);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+            return $this->handleUnexpectedException($e);
         }
     }
 
@@ -50,7 +50,7 @@ class QueueController extends Controller
                 'message' => "Job {$uuid} requeued for retry",
             ]);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+            return $this->handleUnexpectedException($e);
         }
     }
 
@@ -66,7 +66,7 @@ class QueueController extends Controller
                 'message' => 'All failed jobs requeued for retry',
             ]);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+            return $this->handleUnexpectedException($e);
         }
     }
 
@@ -82,7 +82,7 @@ class QueueController extends Controller
                 'message' => 'All failed jobs flushed',
             ]);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+            return $this->handleUnexpectedException($e);
         }
     }
 }

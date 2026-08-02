@@ -43,7 +43,7 @@ class MarketingController extends Controller
 
             return response()->json(['success' => true, 'message' => 'Subscribed successfully', 'data' => $subscriber], 201);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
+            return $this->handleUnexpectedException($e, 422);
         }
     }
 
@@ -55,7 +55,7 @@ class MarketingController extends Controller
 
             return response()->json(['success' => true, 'message' => 'Unsubscribed successfully', 'data' => $result]);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
+            return $this->handleUnexpectedException($e, 422);
         }
     }
 
@@ -68,7 +68,7 @@ class MarketingController extends Controller
 
             return response()->json(['success' => true, 'data' => $stats]);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+            return $this->handleUnexpectedException($e);
         }
     }
 
@@ -96,7 +96,7 @@ class MarketingController extends Controller
                 ],
             ]);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+            return $this->handleUnexpectedException($e);
         }
     }
 
@@ -107,7 +107,7 @@ class MarketingController extends Controller
 
             return response()->json(['success' => true, 'data' => $stats]);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+            return $this->handleUnexpectedException($e);
         }
     }
 
@@ -120,7 +120,7 @@ class MarketingController extends Controller
         } catch (AppError $e) {
             return $e->render();
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+            return $this->handleUnexpectedException($e);
         }
     }
 
@@ -139,7 +139,7 @@ class MarketingController extends Controller
 
             return response()->json(['success' => true, 'data' => $subscriber], 201);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
+            return $this->handleUnexpectedException($e, 422);
         }
     }
 
@@ -152,7 +152,7 @@ class MarketingController extends Controller
         } catch (AppError $e) {
             return $e->render();
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+            return $this->handleUnexpectedException($e);
         }
     }
 
@@ -165,7 +165,7 @@ class MarketingController extends Controller
         } catch (AppError $e) {
             return $e->render();
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+            return $this->handleUnexpectedException($e);
         }
     }
 
@@ -176,7 +176,7 @@ class MarketingController extends Controller
 
             return response()->json(['success' => true, 'data' => ['csv' => $csv, 'count' => substr_count($csv, "\n") - 1]]);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+            return $this->handleUnexpectedException($e);
         }
     }
 
@@ -200,7 +200,7 @@ class MarketingController extends Controller
         } catch (AppError $e) {
             return $e->render();
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
+            return $this->handleUnexpectedException($e, 422);
         }
     }
 
@@ -235,7 +235,7 @@ class MarketingController extends Controller
                 ],
             ], 202);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
+            return $this->handleUnexpectedException($e, 422);
         }
     }
 
@@ -281,7 +281,7 @@ class MarketingController extends Controller
                 ],
             ]);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+            return $this->handleUnexpectedException($e);
         }
     }
 
@@ -294,7 +294,7 @@ class MarketingController extends Controller
         } catch (AppError $e) {
             return $e->render();
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+            return $this->handleUnexpectedException($e);
         }
     }
 
@@ -318,7 +318,7 @@ class MarketingController extends Controller
 
             return response()->json(['success' => true, 'data' => $campaign], 201);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
+            return $this->handleUnexpectedException($e, 422);
         }
     }
 
@@ -334,7 +334,7 @@ class MarketingController extends Controller
         } catch (AppError $e) {
             return $e->render();
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+            return $this->handleUnexpectedException($e);
         }
     }
 
@@ -347,7 +347,7 @@ class MarketingController extends Controller
         } catch (AppError $e) {
             return $e->render();
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+            return $this->handleUnexpectedException($e);
         }
     }
 
@@ -360,7 +360,7 @@ class MarketingController extends Controller
         } catch (AppError $e) {
             return $e->render();
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+            return $this->handleUnexpectedException($e);
         }
     }
 
@@ -373,7 +373,7 @@ class MarketingController extends Controller
         } catch (AppError $e) {
             return $e->render();
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+            return $this->handleUnexpectedException($e);
         }
     }
 
@@ -386,7 +386,7 @@ class MarketingController extends Controller
         } catch (AppError $e) {
             return $e->render();
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+            return $this->handleUnexpectedException($e);
         }
     }
 
@@ -412,7 +412,7 @@ class MarketingController extends Controller
         } catch (AppError $e) {
             return $e->render();
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+            return $this->handleUnexpectedException($e);
         }
     }
 
@@ -425,7 +425,7 @@ class MarketingController extends Controller
         } catch (AppError $e) {
             return $e->render();
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+            return $this->handleUnexpectedException($e);
         }
     }
 
@@ -442,7 +442,7 @@ class MarketingController extends Controller
 
             return response()->json(['success' => true, 'data' => $campaign], 201);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
+            return $this->handleUnexpectedException($e, 422);
         }
     }
 }

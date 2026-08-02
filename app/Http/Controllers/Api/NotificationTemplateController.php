@@ -45,7 +45,7 @@ class NotificationTemplateController extends Controller
         } catch (AppError $e) {
             return $e->render();
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
+            return $this->handleUnexpectedException($e, 422);
         }
     }
 
@@ -55,7 +55,7 @@ class NotificationTemplateController extends Controller
             $result = $this->notificationTemplateService->toggleTemplate($id);
             return response()->json(['success' => true, 'data' => $result]);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
+            return $this->handleUnexpectedException($e, 422);
         }
     }
 
@@ -68,7 +68,7 @@ class NotificationTemplateController extends Controller
         } catch (AppError $e) {
             return $e->render();
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
+            return $this->handleUnexpectedException($e, 422);
         }
     }
 }

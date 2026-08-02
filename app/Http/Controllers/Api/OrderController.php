@@ -366,7 +366,7 @@ class OrderController extends Controller
 
             return response()->json(['success' => true, 'message' => 'Order updated', 'data' => $data]);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
+            return $this->handleUnexpectedException($e, 422);
         }
     }
 

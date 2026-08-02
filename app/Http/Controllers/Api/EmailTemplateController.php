@@ -122,7 +122,7 @@ class EmailTemplateController extends Controller
                 Setting::updateOrCreate(['module' => 'SMTP', 'key' => "template.{$id}.active"], ['value' => $validated['active'] ? 'true' : 'false']);
             }
             return response()->json(['success' => true, 'message' => 'Template updated']);
-        } catch (\Exception $e) { return response()->json(['success' => false, 'message' => $e->getMessage()], 422); }
+        } catch (\Exception $e) { return $this->handleUnexpectedException($e, 422); }
     }
 
     public function toggleTemplate(string $id): JsonResponse

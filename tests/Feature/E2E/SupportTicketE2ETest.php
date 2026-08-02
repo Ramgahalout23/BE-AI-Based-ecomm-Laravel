@@ -218,6 +218,90 @@ class SupportTicketE2ETest extends TestCase
     }
 
     /** @test */
+    public function test_chat_init_creates_new_ticket_first_time()
+    {
+        $response = $this->withHeaders($this->authHeaders())
+            ->postJson("{$this->apiPrefix}/chat/init");
+
+        $response->assertStatus(200)
+            ->assertJson(['success' => true])
+            ->assertJsonPath('data.subject', 'Chat Support')
+            ->assertJsonStructure(['data' => ['id', 'ticket_number', 'messages']]);
+
+        $this->assertStringStartsWith('CHAT-', $response->json('data.ticket_number'));
+        $this->assertEquals(1, SupportTicket::where('user_id', $this->user->id)->count());
+    }
+
+    /** @test */
+    public function test_chat_init_resumes_existing_open_chat_ticket()
+    {
+        // First open creates a ticket.
+        $first = $this->withHeaders($this->authHeaders())
+            ->postJson("{$this->apiPrefix}/chat/init");
+        $first->assertStatus(200);
+        $firstId = $first->json('data.id');
+
+        // A second open must resume the SAME ticket instead of duplicating it.
+        $second = $this->withHeaders($this->authHeaders())
+            ->postJson("{$this->apiPrefix}/chat/init");
+
+        $second->assertStatus(200)
+            ->assertJson(['success' => true]);
+        $this->assertEquals($firstId, $second->json('data.id'));
+        $this->assertEquals(1, SupportTicket::where('user_id', $this->user->id)->count());
+    }
+
+    /** @test */
+    public function test_chat_init_creates_new_ticket_when_existing_chat_is_closed()
+    {
+        // Terminal chat ticket (CLOSED) must NOT be resumed — a fresh chat starts.
+        $closed = SupportTicket::create([
+            'ticket_number' => 'CHAT-CLOSED-' . strtoupper(Str::random(6)),
+            'user_id' => $this->user->id,
+            'subject' => 'Chat Support',
+            'description' => 'Old closed chat',
+            'category' => 'OTHER',
+            'priority' => 'MEDIUM',
+            'status' => 'CLOSED',
+        ]);
+
+        $response = $this->withHeaders($this->authHeaders())
+            ->postJson("{$this->apiPrefix}/chat/init");
+
+        $response->assertStatus(200)
+            ->assertJson(['success' => true]);
+        $this->assertNotEquals($closed->id, $response->json('data.id'));
+        $this->assertEquals('OPEN', $response->json('data.status'));
+        $this->assertEquals(2, SupportTicket::where('user_id', $this->user->id)->count());
+    }
+
+    /** @test */
+    public function test_chat_init_does_not_resume_another_users_ticket()
+    {
+        $otherUser = User::factory()->create(['role' => 'CUSTOMER']);
+        SupportTicket::create([
+            'ticket_number' => 'CHAT-OTHER-' . strtoupper(Str::random(6)),
+            'user_id' => $otherUser->id,
+            'subject' => 'Chat Support',
+            'description' => 'Other users chat',
+            'category' => 'OTHER',
+            'priority' => 'MEDIUM',
+            'status' => 'OPEN',
+        ]);
+
+        $response = $this->withHeaders($this->authHeaders())
+            ->postJson("{$this->apiPrefix}/chat/init");
+
+        $response->assertStatus(200)
+            ->assertJson(['success' => true]);
+        // A fresh ticket is created for the acting user — never the other user's chat.
+        $this->assertNotEquals($otherUser->id, $response->json('data.user_id'));
+        $this->assertStringStartsWith('CHAT-', $response->json('data.ticket_number'));
+        // Only the new chat ticket belongs to the acting user.
+        $this->assertEquals(1, SupportTicket::where('user_id', $this->user->id)->count());
+    }
+
+    /** @test */
     public function test_forbidden_ticket_access()
     {
         $otherUser = User::factory()->create(['role' => 'CUSTOMER']);

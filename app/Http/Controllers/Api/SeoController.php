@@ -416,7 +416,7 @@ class SeoController extends Controller
                 'recent_updates' => $recentUpdates,
             ]]);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => 'Failed to load SEO dashboard', 'error' => $e->getMessage()], 500);
+            return $this->handleUnexpectedException($e);
         }
     }
 

@@ -80,9 +80,7 @@ class AbandonedCartController extends Controller
 
             $cart = $this->abandonedCartService->create(Auth::id(), $data);
             return response()->json(['success' => true, 'data' => $cart], 201);
-        } catch (AppError $e) { return $e->render(); } catch (\Illuminate\Validation\ValidationException $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage(), 'errors' => $e->errors()], 422);
-        }
+        } catch (AppError $e) { return $e->render(); } catch (\Illuminate\Validation\ValidationException $e) { throw $e; }
     }
 
     public function userCarts(): JsonResponse
