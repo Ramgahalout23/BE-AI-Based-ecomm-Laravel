@@ -817,6 +817,9 @@ class TranslationSeeder extends Seeder
 
         // Reels
         'reels.watch_and_buy' => 'Watch and Buy',
+        'reels.premium' => 'Premium',
+        'reels.mute' => 'Mute',
+        'reels.unmute' => 'Unmute',
         'reels.shop_the_look' => 'Shop the look — tap any reel to explore',
         'reels.like' => 'Like',
         'reels.liked' => 'Liked',
