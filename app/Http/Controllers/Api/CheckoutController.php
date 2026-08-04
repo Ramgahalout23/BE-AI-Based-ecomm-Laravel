@@ -17,7 +17,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Str;
+use Illuminate\Support\Str;
 
 class CheckoutController extends Controller
 {
@@ -154,6 +154,7 @@ class CheckoutController extends Controller
 
             $orderItems = [];
             $subtotal = 0;
+            $skippedItemIds = [];
             foreach ($validated['items'] as $idx => $item) {
                 if (in_array($idx, $customItemKeys)) {
                     // Custom T-Shirt: use the price submitted from the frontend
@@ -169,10 +170,10 @@ class CheckoutController extends Controller
                     // Real product: look up from database to prevent price tampering
                     $product = $preloadedProducts->get($item['productId']);
                     if (!$product) {
-                        return response()->json([
-                            'success' => false,
-                            'message' => "Product '{$item['productId']}' not found",
-                        ], 422);
+                        // Product not found in database (may have been deleted after being added to cart).
+                        // Skip it gracefully instead of failing the entire order.
+                        $skippedItemIds[] = $item['productId'];
+                        continue;
                     }
                     $price = (float) $product->price;
                     $orderItems[] = [
@@ -182,6 +183,14 @@ class CheckoutController extends Controller
                     ];
                     $subtotal += $price * (int) $item['quantity'];
                 }
+            }
+
+            // If all items were skipped (no valid products found), return an error
+            if (empty($orderItems)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'None of the items in your cart are available. They may have been removed from the store.',
+                ], 422);
             }
             $shippingCost = $subtotal >= 499 ? 0 : 50;
 
@@ -290,10 +299,16 @@ class CheckoutController extends Controller
             }
 
             // ── Build the JSON response ──
+            $responseMessage = 'Order created';
+            if (!empty($skippedItemIds)) {
+                $responseMessage = 'Order created. Some items were skipped because they are no longer available.';
+            }
             $response = response()->json([
                 'success' => true,
-                'message' => 'Order created',
-                'data' => $orderArray,
+                'message' => $responseMessage,
+                'data' => array_merge($orderArray, [
+                    'skippedItems' => $skippedItemIds,
+                ]),
             ], 201);
 
             // ── Always return a Sanctum token for guest checkout users ──

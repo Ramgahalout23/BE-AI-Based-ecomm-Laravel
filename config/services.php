@@ -56,6 +56,44 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Google OAuth (Social Login)
+    |--------------------------------------------------------------------------
+    |
+    | Credentials for "Continue with Google" login. Two ways to configure:
+    |
+    | 1. Env vars below (GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET) — these take
+    |    priority and are read by OAuthSettingsService.
+    | 2. Admin Panel → Settings → Integrations → Social Login (stored in the
+    |    `settings` table as googleClientId / googleClientSecret).
+    |
+    | GOOGLE_REDIRECT_URI is optional. When set, it is used verbatim as the
+    |    OAuth callback URL — useful behind HTTPS-terminating proxies where the
+    |    auto-detected scheme/host may not match Google Console's registered URI.
+    |
+    */
+    'google' => [
+        'client_id' => env('GOOGLE_CLIENT_ID'),
+        'client_secret' => env('GOOGLE_CLIENT_SECRET'),
+        'redirect' => env('GOOGLE_REDIRECT_URI'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Facebook OAuth (Social Login)
+    |--------------------------------------------------------------------------
+    |
+    | Same pattern as Google. Env vars take priority over the admin panel
+    | settings (facebookAppId / facebookAppSecret).
+    |
+    */
+    'facebook' => [
+        'client_id' => env('FACEBOOK_CLIENT_ID'),
+        'client_secret' => env('FACEBOOK_CLIENT_SECRET'),
+        'redirect' => env('FACEBOOK_REDIRECT_URI'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Socket.io Server (Node.js bridge)
     |--------------------------------------------------------------------------
     |

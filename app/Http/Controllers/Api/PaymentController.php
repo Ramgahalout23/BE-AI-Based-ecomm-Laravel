@@ -24,11 +24,9 @@ class PaymentController extends Controller
 
     public function getPaymentMethods(): JsonResponse
     {
-        $methods = [
-            ['id' => 'RAZORPAY', 'name' => 'Razorpay', 'description' => 'Pay via UPI, Card, NetBanking or Wallet', 'active' => true],
-            ['id' => 'COD', 'name' => 'Cash on Delivery', 'description' => 'Pay when you receive your package', 'active' => true],
-        ];
-        return response()->json(['success' => true, 'data' => $methods]);
+        // Returns only the methods enabled in Admin → Settings → Payments
+        // (razorpayEnabled / codEnabled toggles + enabled custom gateways)
+        return response()->json(['success' => true, 'data' => $this->paymentService->getPaymentMethods()]);
     }
 
     public function createRazorpayOrder(Request $request): JsonResponse

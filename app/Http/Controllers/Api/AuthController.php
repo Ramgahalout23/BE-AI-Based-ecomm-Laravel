@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\Api\Traits\MapsCamelCaseFields;
 use App\Services\AuthService;
+use App\Services\OAuthSettingsService;
 use App\Exceptions\AppError;
 use App\Traits\CacheKeyRegistry;
 use Illuminate\Http\JsonResponse;
@@ -19,7 +20,8 @@ class AuthController extends Controller
     use MapsCamelCaseFields;
 
     public function __construct(
-        protected AuthService $authService
+        protected AuthService $authService,
+        protected OAuthSettingsService $oauthSettingsService
     ) {}
 
     public function register(Request $request): JsonResponse
@@ -252,14 +254,8 @@ class AuthController extends Controller
     public function oauthStatus(): JsonResponse
     {
         $providers = [
-            'google' => [
-                'enabled' => !empty(config('services.google.client_id')),
-                'client_id' => config('services.google.client_id'),
-            ],
-            'facebook' => [
-                'enabled' => !empty(config('services.facebook.client_id')),
-                'client_id' => config('services.facebook.client_id'),
-            ],
+            'google' => $this->oauthSettingsService->getProviderStatus('google'),
+            'facebook' => $this->oauthSettingsService->getProviderStatus('facebook'),
         ];
 
         return response()->json([
@@ -275,7 +271,8 @@ class AuthController extends Controller
      * Redirect to OAuth provider (Google / Facebook).
      * GET /api/v1/auth/{provider}
      */
-    public function redirectToProvider(string $provider): JsonResponse
+    public function redirectToProvider(Request $request, string $provider): JsonResponse|
+        \Illuminate\Http\RedirectResponse
     {
         $provider = strtolower($provider);
 
@@ -286,7 +283,17 @@ class AuthController extends Controller
             ], 400);
         }
 
-        if (empty(config("services.{$provider}.client_id"))) {
+        if (!$this->oauthSettingsService->isProviderEnabled($provider)) {
+            return response()->json([
+                'success' => false,
+                'message' => "{$provider} OAuth is disabled in admin settings",
+            ], 400);
+        }
+
+        $this->oauthSettingsService->applyProviderConfig($provider);
+        $credentials = $provider === 'google' ? $this->oauthSettingsService->getGoogleCredentials() : $this->oauthSettingsService->getFacebookCredentials();
+
+        if (empty($credentials['client_id']) || empty($credentials['client_secret'])) {
             return response()->json([
                 'success' => false,
                 'message' => "{$provider} OAuth is not configured",
@@ -299,13 +306,17 @@ class AuthController extends Controller
                 ->redirect()
                 ->getTargetUrl();
 
-            return response()->json([
-                'success' => true,
-                'data' => [
-                    'redirect_url' => $redirectUrl,
-                    'provider' => $provider,
-                ],
-            ]);
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'success' => true,
+                    'data' => [
+                        'redirect_url' => $redirectUrl,
+                        'provider' => $provider,
+                    ],
+                ]);
+            }
+
+            return redirect()->away($redirectUrl);
         } catch (\Exception $e) {
             return $this->handleUnexpectedException($e);
         }
@@ -315,7 +326,8 @@ class AuthController extends Controller
      * Handle OAuth provider callback.
      * GET /api/v1/auth/{provider}/callback
      */
-    public function handleProviderCallback(string $provider): JsonResponse
+    public function handleProviderCallback(Request $request, string $provider): JsonResponse|
+        \Illuminate\Http\RedirectResponse
     {
         $provider = strtolower($provider);
 
@@ -325,6 +337,15 @@ class AuthController extends Controller
                 'message' => 'Unsupported OAuth provider',
             ], 400);
         }
+
+        if (!$this->oauthSettingsService->isProviderEnabled($provider)) {
+            return response()->json([
+                'success' => false,
+                'message' => "{$provider} OAuth is disabled in admin settings",
+            ], 400);
+        }
+
+        $this->oauthSettingsService->applyProviderConfig($provider);
 
         try {
             $socialUser = Socialite::driver($provider)->stateless()->user();
@@ -344,15 +365,33 @@ class AuthController extends Controller
             $user->tokens()->delete();
             $token = $user->createToken('auth-token')->plainTextToken;
 
-            return response()->json([
-                'success' => true,
-                'message' => "{$provider} login successful",
-                'data' => [
-                    'token' => $token,
-                    'user' => $user->only(['id', 'first_name', 'last_name', 'email', 'role', 'avatar']),
-                ],
-            ]);
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'success' => true,
+                    'message' => "{$provider} login successful",
+                    'data' => [
+                        'token' => $token,
+                        'user' => $user->only(['id', 'first_name', 'last_name', 'email', 'role', 'avatar']),
+                    ],
+                ]);
+            }
+
+            $frontendBase = rtrim(config('app.frontend_url') ?: config('app.url') ?: 'http://localhost:5173', '/');
+            $redirectUrl = $frontendBase . '/?' . http_build_query(['token' => $token]);
+
+            return redirect()->to($redirectUrl);
         } catch (\Exception $e) {
+            if (!$request->expectsJson()) {
+                $frontendBase = rtrim(config('app.frontend_url') ?: config('app.url') ?: 'http://localhost:5173', '/');
+                $message = urlencode($e->getMessage() ?: 'Google login failed');
+                $errorParams = [
+                    'oauth_error' => 'google_login_failed',
+                    'message' => $message,
+                ];
+
+                return redirect()->to($frontendBase . '/?' . http_build_query($errorParams));
+            }
+
             return $this->handleUnexpectedException($e, 401);
         }
     }
@@ -370,8 +409,8 @@ class AuthController extends Controller
             'success' => true,
             'message' => 'OAuth strategies refreshed',
             'data' => [
-                'google' => !empty(config('services.google.client_id')),
-                'facebook' => !empty(config('services.facebook.client_id')),
+                'google' => $this->oauthSettingsService->getProviderStatus('google')['enabled'],
+                'facebook' => $this->oauthSettingsService->getProviderStatus('facebook')['enabled'],
             ],
         ]);
     }

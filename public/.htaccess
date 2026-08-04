@@ -45,6 +45,15 @@
     Header always set X-Content-Type-Options "nosniff"
     Header always set X-Frame-Options "SAMEORIGIN"
     Header always set X-XSS-Protection "1; mode=block"
+
+    # ── Service Worker: never cache ──
+    # Browsers re-fetch sw.js to check for updates; a cached copy would keep an
+    # old service worker active (e.g. one that intercepts /api/ OAuth callbacks
+    # and serves the SPA shell, breaking Google login with a 404 page).
+    <FilesMatch "^sw\.js$">
+        Header always set Cache-Control "no-store, no-cache, must-revalidate, max-age=0"
+        Header always set Pragma "no-cache"
+    </FilesMatch>
 </IfModule>
 
 # ── Cache Static Assets ──

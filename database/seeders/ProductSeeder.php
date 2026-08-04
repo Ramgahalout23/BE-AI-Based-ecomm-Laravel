@@ -80,7 +80,15 @@ class ProductSeeder extends Seeder
         $this->command->info('   ✓ Cleared');
 
         // ─────────────────────────────────────────────
-        // 4. PRODUCT DEFINITIONS
+        // 4a. RE-CREATE THE CUSTOM T-SHIRT PRODUCT
+        //     (Must exist for the custom design flow — it's referenced
+        //      by CUSTOM_TEE_PRODUCT_ID in migrations, but ProductSeeder
+        //      truncates the table, so we need to re-create it here.)
+        // ─────────────────────────────────────────────
+        $this->createCustomTeeProduct($cats, $brand);
+
+        // ─────────────────────────────────────────────
+        // 4b. PRODUCT DEFINITIONS
         // ─────────────────────────────────────────────
         $this->command->info('📦 Creating products...');
 
@@ -426,4 +434,71 @@ class ProductSeeder extends Seeder
         $this->command->warn('   ⚠ Cache warm skipped: ' . $e->getMessage());
     }
 }
+
+    /**
+     * Create the Custom T-Shirt product that is used exclusively for the
+     * custom design flow (CustomizePage). This product is:
+     * - NOT shown on homepage, product listings, or search results
+     * - Only added to cart via the Custom T-Shirt customizer
+     * - Referenced by CUSTOM_TEE_PRODUCT_ID constant in the codebase
+     *
+     * The migration creates this product, but when ProductSeeder truncates
+     * the products table, it gets deleted — so we re-create it here.
+     */
+    protected function createCustomTeeProduct(array $cats, $brand): void
+    {
+        $this->command->info('🎨 Creating Custom T-Shirt product...');
+
+        $customTeeId = 'c5b8e3f0-3a1c-4b7e-9d6f-1a2b3c4d5e6f';
+
+        $prod = Product::create([
+            'id'                => $customTeeId,
+            'name'              => 'Custom T-Shirt Design',
+            'slug'              => 'custom-t-shirt-design',
+            'description'       => 'Design your own custom t-shirt. Choose colors, add text, upload images, and create a unique look.',
+            'short_description' => 'Design your own custom t-shirt',
+            'price'             => 699,
+            'old_price'         => null,
+            'cost'              => 299,
+            'quantity'          => 99999,
+            'sku'               => 'CUSTOM-TEE',
+            'category_id'       => $cats['tees'] ?? null,
+            'brand_id'          => $brand->id ?? null,
+            'status'            => 'PUBLISHED',
+            'is_featured'       => false,
+            'badge'             => null,
+            'rating'            => 0,
+            'review_count'      => 0,
+            'seo_title'         => null,
+            'seo_description'   => null,
+        ]);
+
+        ProductImage::create([
+            'product_id' => $prod->id,
+            'url'        => 'https://images.unsplash.com/photo-1583743814966-8936f5b7be1a?q=80&w=800',
+            'alt'        => 'Custom T-Shirt Design',
+            'display_order' => 1,
+        ]);
+
+        Inventory::create([
+            'product_id'         => $prod->id,
+            'total_quantity'     => 99999,
+            'available_quantity' => 99999,
+            'reserved_quantity'  => 0,
+            'damaged_quantity'   => 0,
+        ]);
+
+        // Create a single default variant (no size/color options)
+        ProductVariant::create([
+            'product_id' => $prod->id,
+            'name'       => 'Custom T-Shirt',
+            'sku'        => 'CUSTOM-TEE-DEFAULT',
+            'attributes' => ['type' => 'custom'],
+            'price'      => 699,
+            'quantity'   => 99999,
+            'images'     => null,
+        ]);
+
+        $this->command->info('   ✓ Custom T-Shirt product created (ID: ' . $customTeeId . ')');
+    }
 }

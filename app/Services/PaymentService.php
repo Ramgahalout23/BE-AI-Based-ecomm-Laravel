@@ -16,11 +16,13 @@ class PaymentService
     ) {}
 
     /**
-     * Get available payment methods (from settings/dynamic - matching TS behavior).
+     * Get available payment methods — respects what the admin has enabled in
+     * Admin → Settings → Payments (razorpayEnabled / codEnabled toggles plus
+     * enabled custom gateways from the dynamic_payment_methods setting).
      */
     public function getPaymentMethods(): array
     {
-        // Try to load from settings (matching TS dynamic payment methods from DB)
+        // Try to load from settings (matching TS behavior)
         try {
             $settingsService = app(SettingsService::class);
 
@@ -28,9 +30,6 @@ class PaymentService
             $razorpayEnabled = $settingsService->get('razorpayEnabled', 'true') === 'true';
             $codEnabled = $settingsService->get('codEnabled', 'true') === 'true';
 
-            // Also support a combined payment_methods setting for custom gateways
-            $customMethods = $settingsService->get('payment_methods', []);
-            
             $methods = [];
 
             if ($razorpayEnabled) {
@@ -38,6 +37,7 @@ class PaymentService
                     'id' => 'RAZORPAY',
                     'name' => 'Razorpay / Cards / UPI',
                     'description' => 'Popular Indian payment gateway supporting UPI, Netbanking & Cards',
+                    'active' => true,
                 ];
             }
 
@@ -46,14 +46,25 @@ class PaymentService
                     'id' => 'COD',
                     'name' => 'Cash on Delivery (COD)',
                     'description' => 'Pay with cash upon delivery of your package',
+                    'active' => true,
                 ];
             }
 
-            // Merge in custom gateways from payment_methods setting
-            if (!empty($customMethods) && is_array($customMethods)) {
+            // Merge in custom gateways configured in Admin → Settings → Payments
+            // (stored as JSON under the dynamic_payment_methods setting)
+            $customMethods = $settingsService->get('dynamic_payment_methods', '[]');
+            if (is_string($customMethods)) {
+                $customMethods = json_decode($customMethods, true) ?: [];
+            }
+            if (is_array($customMethods)) {
                 foreach ($customMethods as $cm) {
-                    if (is_array($cm) && isset($cm['id']) && !in_array($cm['id'], array_column($methods, 'id'))) {
-                        $methods[] = $cm;
+                    if (is_array($cm) && isset($cm['id']) && $cm['enabled'] !== false) {
+                        $methods[] = [
+                            'id' => $cm['id'],
+                            'name' => $cm['name'] ?? $cm['id'],
+                            'description' => $cm['description'] ?? '',
+                            'active' => true,
+                        ];
                     }
                 }
             }
@@ -64,11 +75,11 @@ class PaymentService
         } catch (\Exception $e) {
             \Illuminate\Support\Facades\Log::warning('Failed to load payment methods from settings', ['error' => $e->getMessage()]);
         }
-        
+
         // Default fallback to hardcoded methods (matching TS behavior)
         return [
-            ['id' => 'RAZORPAY', 'name' => 'Razorpay / Cards / UPI', 'description' => 'Popular Indian payment gateway supporting UPI, Netbanking & Cards'],
-            ['id' => 'COD', 'name' => 'Cash on Delivery (COD)', 'description' => 'Pay with cash upon delivery of your package'],
+            ['id' => 'RAZORPAY', 'name' => 'Razorpay / Cards / UPI', 'description' => 'Popular Indian payment gateway supporting UPI, Netbanking & Cards', 'active' => true],
+            ['id' => 'COD', 'name' => 'Cash on Delivery (COD)', 'description' => 'Pay with cash upon delivery of your package', 'active' => true],
         ];
     }
 

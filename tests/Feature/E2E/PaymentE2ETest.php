@@ -11,6 +11,7 @@ use App\Models\Address;
 use App\Models\Order;
 use App\Models\Payment;
 use App\Models\Refund;
+use App\Services\SettingsService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 
@@ -65,6 +66,11 @@ class PaymentE2ETest extends TestCase
     /** @test */
     public function test_get_payment_methods()
     {
+        // Configure a custom gateway via the settings service (Admin → Settings → Payments)
+        app(SettingsService::class)->set('dynamic_payment_methods', json_encode([
+            ['id' => 'PAYTM', 'name' => 'Paytm', 'description' => 'Pay via Paytm wallet', 'enabled' => true],
+        ]));
+
         $response = $this->getJson("{$this->apiPrefix}/payments/methods");
 
         $response->assertStatus(200)
@@ -74,7 +80,9 @@ class PaymentE2ETest extends TestCase
             ]);
 
         $methods = $response->json('data');
+        // Defaults (Razorpay + COD) plus the admin-configured custom gateway
         $this->assertGreaterThanOrEqual(3, count($methods));
+        $this->assertContains('PAYTM', array_column($methods, 'id'));
     }
 
     /** @test */
