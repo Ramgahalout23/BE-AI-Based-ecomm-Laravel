@@ -121,6 +121,8 @@ class CheckoutController extends Controller
                 'first_name' => $sa['firstName'],
                 'last_name' => $sa['lastName'],
                 'phone_number' => $sa['phone'],
+                // Normalize so the merge query can use a plain indexed equality
+                'email' => isset($sa['email']) ? strtolower(trim($sa['email'])) : null,
                 'address_line1' => $sa['addressLine1'],
                 'address_line2' => $sa['addressLine2'] ?? null,
                 'city' => $sa['city'],

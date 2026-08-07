@@ -27,7 +27,11 @@ class AnalyticsSummaryService
             ->selectRaw("SUM(CASE WHEN status = 'CONFIRMED' THEN 1 ELSE 0 END) as confirmed")
             ->selectRaw("SUM(CASE WHEN status = 'PENDING' THEN 1 ELSE 0 END) as pending")
             ->selectRaw("SUM(CASE WHEN status = 'CANCELLED' THEN 1 ELSE 0 END) as cancelled")
-            ->selectRaw('COALESCE(SUM(total), 0) as revenue')
+            // Revenue counts only DELIVERED/CONFIRMED orders — matches the direct
+            // dashboard metric query (Order::whereIn(status)->sum('total')) so the
+            // stat cards and the revenue comparison chart agree. CANCELLED/RETURNED
+            // order totals are excluded.
+            ->selectRaw("COALESCE(SUM(CASE WHEN status IN ('DELIVERED', 'CONFIRMED') THEN total ELSE 0 END), 0) as revenue")
             ->selectRaw('COALESCE(SUM(CASE WHEN discount > 0 THEN discount ELSE 0 END), 0) as discount')
             ->whereBetween('created_at', [$start, $end])
             ->first();
@@ -244,7 +248,8 @@ class AnalyticsSummaryService
         if ($startDate && $endDate) {
             $totals = $this->getTotalsForRange($startDate, $endDate);
 
-            $ordersToday = \App\Models\Order::whereDate('created_at', today())->count();
+            // Range predicate instead of whereDate() so the created_at index is used
+            $ordersToday = \App\Models\Order::where('created_at', '>=', today()->startOfDay())->count();
 
             return [
                 'totalRevenue'         => $totals['total_revenue'],
@@ -265,31 +270,75 @@ class AnalyticsSummaryService
             ];
         }
 
-        // All-time simple COUNT/SUM queries — fast, index-only, no GROUP BY
-        $totalRevenue  = (float) \App\Models\Order::whereIn('status', ['DELIVERED', 'CONFIRMED'])->sum('total');
-        $totalOrders   = \App\Models\Order::count();
-        $pendingOrders = \App\Models\Order::where('status', 'PENDING')->count();
-        $totalReviews  = \App\Models\Review::count();
-        $pendingReviews = \App\Models\Review::where('is_moderated', false)->where('is_flagged', false)->count();
-        $ordersToday   = \App\Models\Order::whereDate('created_at', today())->count();
-        $newUsers      = \App\Models\User::whereDate('created_at', today())->count();
+        // All-time totals read ENTIRELY from the pre-aggregated daily_analytics_summary
+        // table — zero source-table scans of orders/reviews/users. If the summary
+        // table has never been aggregated, fall back to direct source queries so an
+        // empty summary can't zero out the dashboard.
+        if (DailyAnalyticsSummary::exists()) {
+            $allTime = DailyAnalyticsSummary::query()
+                ->selectRaw('COALESCE(SUM(total_orders), 0) AS total_orders')
+                ->selectRaw('COALESCE(SUM(total_revenue), 0) AS total_revenue')
+                ->selectRaw('COALESCE(SUM(pending_orders), 0) AS pending_orders')
+                ->selectRaw('COALESCE(SUM(approved_reviews + pending_reviews + rejected_reviews), 0) AS total_reviews')
+                ->selectRaw('COALESCE(SUM(pending_reviews), 0) AS pending_reviews')
+                ->selectRaw('COALESCE(SUM(new_users), 0) AS new_users')
+                ->first();
 
-        // Running totals from the latest summary row
-        $latest = DailyAnalyticsSummary::latestFirst()->first(['total_users', 'published_products', 'active_coupons', 'active_users']);
+            $totalRevenue   = (float) ($allTime->total_revenue ?? 0);
+            $totalOrders    = (int) ($allTime->total_orders ?? 0);
+            $pendingOrders  = (int) ($allTime->pending_orders ?? 0);
+            $totalReviews   = (int) ($allTime->total_reviews ?? 0);
+            $pendingReviews = (int) ($allTime->pending_reviews ?? 0);
+            $newUsers       = (int) ($allTime->new_users ?? 0);
 
-        $avgOrderValue = $totalOrders > 0 ? round($totalRevenue / $totalOrders, 2) : 0;
+            // "Orders today" = today's summary row (date is unique per day)
+            $ordersToday = (int) (DailyAnalyticsSummary::where('date', today()->format('Y-m-d'))->value('total_orders') ?? 0);
 
-        $totalUsers    = $latest?->total_users ?? \App\Models\User::count();
-        $activeUsers   = $latest?->active_users ?? \App\Models\User::where('is_active', true)->count();
+            // Running totals from the latest summary row
+            $latest = DailyAnalyticsSummary::latestFirst()->first(['total_users', 'published_products', 'active_coupons', 'active_users']);
+
+            $totalUsers    = (int) ($latest->total_users ?? 0);
+            $activeUsers   = (int) ($latest->active_users ?? 0);
+            $totalProducts = (int) ($latest->published_products ?? 0);
+            $totalCoupons  = (int) ($latest->active_coupons ?? 0);
+
+            $avgOrderValue = $totalOrders > 0 ? round($totalRevenue / $totalOrders, 2) : 0;
+        } else {
+            // ── Fallback: summary never aggregated — direct source queries ──
+            $orderStats = \App\Models\Order::selectRaw('COUNT(*) AS total_orders')
+                ->selectRaw("COALESCE(SUM(CASE WHEN status IN ('DELIVERED', 'CONFIRMED') THEN total ELSE 0 END), 0) AS total_revenue")
+                ->selectRaw("COALESCE(SUM(CASE WHEN status = 'PENDING' THEN 1 ELSE 0 END), 0) AS pending_orders")
+                ->selectRaw('COALESCE(SUM(CASE WHEN created_at >= ? THEN 1 ELSE 0 END), 0) AS orders_today', [today()->startOfDay()])
+                ->first();
+
+            $reviewStats = \App\Models\Review::selectRaw('COUNT(*) AS total_reviews')
+                ->selectRaw('COALESCE(SUM(CASE WHEN is_moderated = 0 AND is_flagged = 0 THEN 1 ELSE 0 END), 0) AS pending_reviews')
+                ->first();
+
+            $totalRevenue   = (float) ($orderStats->total_revenue ?? 0);
+            $totalOrders    = (int) ($orderStats->total_orders ?? 0);
+            $pendingOrders  = (int) ($orderStats->pending_orders ?? 0);
+            $ordersToday    = (int) ($orderStats->orders_today ?? 0);
+            $totalReviews   = (int) ($reviewStats->total_reviews ?? 0);
+            $pendingReviews = (int) ($reviewStats->pending_reviews ?? 0);
+            $newUsers       = \App\Models\User::where('created_at', '>=', today()->startOfDay())->count();
+
+            $totalUsers    = \App\Models\User::count();
+            $activeUsers   = \App\Models\User::where('is_active', true)->count();
+            $totalProducts = \App\Models\Product::where('status', 'PUBLISHED')->count();
+            $totalCoupons  = \App\Models\Coupon::where('is_active', true)->count();
+
+            $avgOrderValue = $totalOrders > 0 ? round($totalRevenue / $totalOrders, 2) : 0;
+        }
 
         return [
             'totalRevenue'         => $totalRevenue,
             'totalOrders'          => $totalOrders,
             'totalUsers'           => $totalUsers,
-            'totalProducts'        => $latest?->published_products ?? \App\Models\Product::where('status', 'PUBLISHED')->count(),
+            'totalProducts'        => $totalProducts,
             'pendingOrders'        => $pendingOrders,
             'totalReviews'         => $totalReviews,
-            'totalCoupons'         => $latest?->active_coupons ?? \App\Models\Coupon::where('is_active', true)->count(),
+            'totalCoupons'         => $totalCoupons,
             'avgOrderValue'        => $avgOrderValue,
             'activeUsers'          => $activeUsers,
             'ordersToday'          => $ordersToday,

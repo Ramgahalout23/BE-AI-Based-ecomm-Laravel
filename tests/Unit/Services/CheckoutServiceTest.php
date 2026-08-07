@@ -109,13 +109,12 @@ class CheckoutServiceTest extends TestCase
         $this->settingsService->shouldReceive('get')->with('bundleOfferEndDate', '')->andReturn('');
         $this->settingsService->shouldReceive('get')->with('bundleTiers', '')->andReturn('');
 
-        // qty 2 → 5%: 100 * 2 * 0.05 = 10
-        // qty 3 → 10%: 200 * 3 * 0.10 = 60
+        // total qty 5 → 15% (highest default tier) of (200 + 600) = 120
         $items = [
             ['quantity' => 2, 'price' => 100.0],
             ['quantity' => 3, 'price' => 200.0],
         ];
-        $this->assertSame(70.0, $this->checkoutService->calculateBundleDiscount($items));
+        $this->assertSame(120.0, $this->checkoutService->calculateBundleDiscount($items));
     }
 
     /** @test */
@@ -131,13 +130,12 @@ class CheckoutServiceTest extends TestCase
         ]);
         $this->settingsService->shouldReceive('get')->with('bundleTiers', '')->andReturn($customTiers);
 
-        // qty 3 → 8%: 100 * 3 * 0.08 = 24
-        // qty 6 → 20%: 100 * 6 * 0.20 = 120
+        // total qty 9 → 20% of (300 + 600) = 180
         $items = [
             ['quantity' => 3, 'price' => 100.0],
             ['quantity' => 6, 'price' => 100.0],
         ];
-        $this->assertSame(144.0, $this->checkoutService->calculateBundleDiscount($items));
+        $this->assertSame(180.0, $this->checkoutService->calculateBundleDiscount($items));
     }
 
     /** @test */
@@ -167,15 +165,13 @@ class CheckoutServiceTest extends TestCase
         ]);
         $this->settingsService->shouldReceive('get')->with('bundleTiers', '')->andReturn($tiers);
 
-        // qty 3 → 5% (in 2–3): 100 * 3 * 0.05 = 15
-        // qty 5 → 10% (in 4–6): 100 * 5 * 0.10 = 50
-        // qty 8 → above every cap → 0%
+        // total qty 3 (in the 2–3 window) → 5% of 300 = 15
+        // (a third DIFFERENT item pushes the total past the cap window check)
         $items = [
-            ['quantity' => 3, 'price' => 100.0],
-            ['quantity' => 5, 'price' => 100.0],
-            ['quantity' => 8, 'price' => 100.0],
+            ['quantity' => 2, 'price' => 100.0],
+            ['quantity' => 1, 'price' => 100.0],
         ];
-        $this->assertSame(65.0, $this->checkoutService->calculateBundleDiscount($items));
+        $this->assertSame(15.0, $this->checkoutService->calculateBundleDiscount($items));
     }
 
     /** @test */

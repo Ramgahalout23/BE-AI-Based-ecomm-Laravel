@@ -9,6 +9,11 @@ use App\Exceptions\AppError;
 use App\Models\CustomDesign;
 use App\Models\Product;
 use App\Models\ProductVariant;
+use App\Models\Order;
+use App\Models\OrderItem;
+use App\Models\Address;
+use App\Models\Setting;
+use App\Models\User;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -266,6 +271,29 @@ class OrderService
         // These columns may not exist in the orders table yet
         $data['returnRequestedAt']  = $data['return_requested_at'] ?? null;
         $data['returnedAt']         = $data['returned_at'] ?? null;
+
+        // ── Auto-cancel deadline for unpaid PENDING orders ──
+        // Mirrors the orders:cancel-unpaid scheduler so the frontend countdown
+        // matches the actual cancellation moment. Both read the admin settings
+        // (autoCancelUnpaidEnabled / autoCancelUnpaidMinutes); when the feature is
+        // toggled off no deadline is exposed and the countdown stays hidden.
+        if (($data['status'] ?? null) === 'PENDING' && !empty($data['created_at'])) {
+            $enabled = (string) Setting::where('key', 'autoCancelUnpaidEnabled')->value('value');
+            if ($enabled === 'false' || $enabled === '0') {
+                $data['autoCancelMinutes'] = null;
+                $data['autoCancelAt'] = null;
+            } else {
+                $autoCancelMinutes = (int) (Setting::where('key', 'autoCancelUnpaidMinutes')->value('value')
+                    ?? config('orders.auto_cancel_minutes', 45));
+                $data['autoCancelMinutes'] = $autoCancelMinutes;
+                $data['autoCancelAt'] = \Illuminate\Support\Carbon::parse($data['created_at'])
+                    ->addMinutes($autoCancelMinutes)
+                    ->toIso8601String();
+            }
+        } else {
+            $data['autoCancelMinutes'] = null;
+            $data['autoCancelAt'] = null;
+        }
 
         // ── Customer name ──
         if ($order->relationLoaded('user') && $order->user) {
@@ -796,4 +824,76 @@ class OrderService
     // All post-order notification logic has been moved to queued jobs:
     // - ProcessOrderAfterCreation (for new orders: email, SMS, webhooks, socket, events)
     // - ProcessOrderStatusUpdate (for status changes: SMS, email)
+
+    /**
+     * Claim past guest-checkout orders for a signed-in user.
+     *
+     * Guest checkouts create their own on-the-fly account (either a real-email
+     * account or a placeholder guest_xxx@checkout.local). When the customer later
+     * signs in with their real account, those orders would stay hidden under the
+     * guest account. This method links them to the signed-in user so past guest
+     * checkouts appear in My Orders automatically.
+     *
+     * Two match sources (both against the signed-in user's email, case-insensitive):
+     *  1. The order's owning account has the same email (e.g. a guest account
+     *     created at checkout with this email, or a case-differing duplicate).
+     *  2. The order's shipping/billing address email matches AND the owner is a
+     *     placeholder guest account (guest_xxx@checkout.local) — guest checkouts
+     *     that omitted the account email but provided the shipping email.
+     *
+     * Re-links the order, its items, custom designs, and the referenced addresses.
+     *
+     * @return int number of orders claimed
+     */
+    public function claimGuestOrders(User $user): int
+    {
+        $email = strtolower(trim($user->email ?? ''));
+        if ($email === '') {
+            return 0;
+        }
+
+        $orders = Order::where('user_id', '!=', $user->id)
+            ->where(function ($query) use ($email) {
+                // 1) Owner account email matches (case-insensitive)
+                $query->whereHas('user', fn ($q) => $q->whereRaw('LOWER(email) = ?', [$email]));
+
+                // 2) Shipping/billing address email matches + placeholder guest owner.
+                //    Address emails are normalized (lowercased) at checkout, so plain
+                //    equality is safe and uses the addresses.email index.
+                $query->orWhere(function ($q) use ($email) {
+                    $q->whereHas('user', fn ($gu) => $gu->where('email', 'like', 'guest_%@checkout.local'))
+                        ->where(function ($addr) use ($email) {
+                            $addr->whereHas('shippingAddress', fn ($a) => $a->where('email', $email))
+                                ->orWhereHas('billingAddress', fn ($a) => $a->where('email', $email));
+                        });
+                });
+            })
+            ->get();
+
+        if ($orders->isEmpty()) {
+            return 0;
+        }
+
+        foreach ($orders as $order) {
+            // Re-link child records first (they hold FK to the order)
+            OrderItem::where('order_id', $order->id)->update(['user_id' => $user->id]);
+            CustomDesign::where('order_id', $order->id)->update(['user_id' => $user->id]);
+
+            // The shipping/billing addresses were created from this customer's
+            // checkout data — move them along so they appear under the real account.
+            if ($order->shipping_address_id) {
+                Address::where('id', $order->shipping_address_id)->update(['user_id' => $user->id]);
+            }
+            if ($order->billing_address_id) {
+                Address::where('id', $order->billing_address_id)->update(['user_id' => $user->id]);
+            }
+
+            $order->update(['user_id' => $user->id]);
+
+            // Invalidate the cached order so the thank-you/detail endpoints refetch
+            Cache::forget('order_' . $order->id);
+        }
+
+        return $orders->count();
+    }
 }

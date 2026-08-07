@@ -76,7 +76,9 @@ class CartRepository extends BaseRepository
         $product = Product::find($productId);
 
         if ($item) {
-            $item->update(['quantity' => $quantity]);
+            // Increment instead of overwrite so re-adding the same variant
+            // merges quantity (same product + size + color = same line).
+            $item->update(['quantity' => $item->quantity + $quantity]);
             return $item->fresh();
         }
 
@@ -216,15 +218,19 @@ class CartRepository extends BaseRepository
         $productIds = $guestItems->pluck('product_id')->toArray();
         $existingItems = CartItem::where('user_id', $userId)
             ->whereIn('product_id', $productIds)
-            ->get()
-            ->keyBy('product_id');
+            ->get();
+
+        // Key by product + size + color so different variants of the same
+        // product merge into their own matching line (not the first match).
+        $variantKey = fn(CartItem $i) => $i->product_id . '|' . ($i->size ?? '') . '|' . ($i->color ?? '');
+        $existingItems = $existingItems->keyBy($variantKey);
 
         $toDelete = [];
         $toUpdate = [];
         $toReassign = [];
 
         foreach ($guestItems as $item) {
-            $existing = $existingItems->get($item->product_id);
+            $existing = $existingItems->get($variantKey($item));
 
             if ($existing) {
                 $toDelete[] = $item->id;

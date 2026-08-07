@@ -37,9 +37,14 @@ class AdminRepository
 
     public function getDashboardMetrics(?string $startDate = null, ?string $endDate = null): array
     {
-        // Don't cache when date-filtered — cache key depends on range
         if ($startDate && $endDate) {
-            return $this->analyticsSummary->getDashboardMetrics($startDate, $endDate);
+            // Date-filtered metrics were previously NEVER cached (the dashboard always
+            // sends a date range, so every load recomputed them from scratch → 5s+ page).
+            // Cache keyed by range with a short 60s TTL — fresh enough for a live
+            // dashboard while collapsing repeated loads/auto-refreshes onto one query.
+            return $this->cacheWithTracking("admin_dashboard_metrics_{$startDate}_{$endDate}", 60, function () use ($startDate, $endDate) {
+                return $this->analyticsSummary->getDashboardMetrics($startDate, $endDate);
+            });
         }
 
         return $this->cacheWithTracking('admin_dashboard_metrics', 300, function () {
@@ -168,10 +173,16 @@ class AdminRepository
     public function getProductAnalytics(int $limit = 20): Collection
     {
         return $this->cacheWithTracking("admin_product_analytics_{$limit}", 300, function () use ($limit) {
-            $products = Product::withCount('orderItems as sales_count')
-                ->where('status', 'PUBLISHED')
-                ->orderByDesc('view_count')
-                ->orderByDesc('sales_count')
+            // Single JOIN + GROUP BY over order_items instead of one correlated
+            // withCount subquery per published product. Uses the existing
+            // order_items(product_id) and products(status) indexes.
+            $products = Product::query()
+                ->selectRaw('products.id, products.name, products.price, products.view_count')
+                ->selectRaw('COALESCE(COUNT(order_items.id), 0) AS sales_count')
+                ->leftJoin('order_items', 'order_items.product_id', '=', 'products.id')
+                ->where('products.status', 'PUBLISHED')
+                ->groupBy('products.id', 'products.name', 'products.price', 'products.view_count')
+                ->orderByRaw('products.view_count DESC, sales_count DESC')
                 ->take($limit)
                 ->get();
 
@@ -191,18 +202,33 @@ class AdminRepository
     public function getUserAnalytics(): array
     {
         return $this->cacheWithTracking('admin_user_analytics', 300, function () {
-            $totalUsers = User::count();
-            $newUsersToday = User::whereDate('created_at', today())->count();
-            $newUsersThisMonth = User::whereMonth('created_at', now()->month)->count();
-            $verifiedUsers = User::where('is_email_verified', true)->count();
-            $activeUsers = User::where('is_active', true)->count();
+            // Single conditional-aggregation pass over users (was 6 separate queries,
+            // two of which used index-hostile whereDate/whereMonth wrappers).
+            $todayStart = today()->startOfDay();
+            $tomorrowStart = $todayStart->copy()->addDay();
+            $monthStart = now()->startOfMonth();
+            $nextMonthStart = now()->addMonth()->startOfMonth();
+
+            $row = User::selectRaw('COUNT(*) AS total_users')
+                ->selectRaw('SUM(CASE WHEN created_at >= ? AND created_at < ? THEN 1 ELSE 0 END) AS new_users_today', [$todayStart, $tomorrowStart])
+                ->selectRaw('SUM(CASE WHEN created_at >= ? AND created_at < ? THEN 1 ELSE 0 END) AS new_users_month', [$monthStart, $nextMonthStart])
+                ->selectRaw('SUM(CASE WHEN is_email_verified = 1 THEN 1 ELSE 0 END) AS verified_users')
+                ->selectRaw('SUM(CASE WHEN is_active = 1 THEN 1 ELSE 0 END) AS active_users')
+                ->first();
 
             $usersByRole = User::select('role', DB::raw('COUNT(*) as count'))
                 ->groupBy('role')
                 ->pluck('count', 'role')
                 ->toArray();
 
-            return compact('totalUsers', 'newUsersToday', 'newUsersThisMonth', 'verifiedUsers', 'activeUsers', 'usersByRole');
+            return [
+                'totalUsers'        => (int) ($row->total_users ?? 0),
+                'newUsersToday'     => (int) ($row->new_users_today ?? 0),
+                'newUsersThisMonth' => (int) ($row->new_users_month ?? 0),
+                'verifiedUsers'     => (int) ($row->verified_users ?? 0),
+                'activeUsers'       => (int) ($row->active_users ?? 0),
+                'usersByRole'       => $usersByRole,
+            ];
         });
     }
 
@@ -281,13 +307,27 @@ class AdminRepository
     public function getCategoryPerformance(): Collection
     {
         return $this->cacheWithTracking('admin_category_performance', 300, function () {
-            return Category::withCount(['products', 'products as total_sold' => function ($q) {
-                    $q->whereHas('orderItems');
-                }])
-                ->withSum(['products as total_revenue' => function ($q) {
-                    $q->whereHas('orderItems');
-                }], 'price')
-                ->get();
+            // Single pass over products (indexed by category_id) with correlated
+            // EXISTS checks against order_items(product_id) — replaces 3 correlated
+            // subqueries per category.
+            $sub = Product::query()
+                ->selectRaw('products.category_id')
+                ->selectRaw('COUNT(*) AS product_count')
+                ->selectRaw('COALESCE(SUM(CASE WHEN EXISTS (SELECT 1 FROM order_items oi2 WHERE oi2.product_id = products.id) THEN 1 ELSE 0 END), 0) AS sold_count')
+                ->selectRaw('COALESCE(SUM(CASE WHEN EXISTS (SELECT 1 FROM order_items oi2 WHERE oi2.product_id = products.id) THEN products.price ELSE 0 END), 0) AS revenue')
+                ->groupBy('products.category_id');
+
+            return Category::query()
+                ->selectRaw('categories.*, COALESCE(sub.product_count, 0) AS products_count, COALESCE(sub.sold_count, 0) AS total_sold, COALESCE(sub.revenue, 0) AS total_revenue')
+                ->leftJoinSub($sub, 'sub', 'sub.category_id', '=', 'categories.id')
+                ->get()
+                // MySQL returns SUM/COUNT as DECIMAL/BIGINT strings via PDO —
+                // normalize back to the int/float types withCount/withSum produced.
+                ->each(function ($category) {
+                    $category->products_count = (int) $category->products_count;
+                    $category->total_sold = (int) $category->total_sold;
+                    $category->total_revenue = (float) $category->total_revenue;
+                });
         });
     }
 
@@ -435,11 +475,19 @@ class AdminRepository
     public function getOrderRevenueStats(): array
     {
         return $this->cacheWithTracking('admin_order_revenue_stats', 300, function () {
-            $totalRevenue = Order::whereIn('status', ['DELIVERED', 'CONFIRMED'])->sum('total');
-            $totalOrders = Order::count();
+            // Single conditional-aggregation pass over orders (was 4 separate scans).
+            // Covered by the (status, total) index added in the admin-index migration.
+            $row = Order::selectRaw('COUNT(*) AS total_orders')
+                ->selectRaw("COALESCE(SUM(CASE WHEN status IN ('DELIVERED', 'CONFIRMED') THEN total ELSE 0 END), 0) AS total_revenue")
+                ->selectRaw('MAX(total) AS max_order_value')
+                ->selectRaw("COALESCE(SUM(CASE WHEN status = 'PENDING' THEN total ELSE 0 END), 0) AS pending_revenue")
+                ->first();
+
+            $totalRevenue  = (float) ($row->total_revenue ?? 0);
+            $totalOrders   = (int) ($row->total_orders ?? 0);
             $avgOrderValue = $totalOrders > 0 ? $totalRevenue / $totalOrders : 0;
-            $maxOrderValue = Order::max('total');
-            $pendingRevenue = Order::where('status', 'PENDING')->sum('total');
+            $maxOrderValue = (float) ($row->max_order_value ?? 0);
+            $pendingRevenue = (float) ($row->pending_revenue ?? 0);
 
             return compact('totalRevenue', 'totalOrders', 'avgOrderValue', 'maxOrderValue', 'pendingRevenue');
         });

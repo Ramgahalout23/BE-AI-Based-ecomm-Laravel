@@ -55,6 +55,8 @@ class SettingsSeeder extends Seeder
 
             // Section Toggles
             ['module' => 'SITE', 'key' => 'salesEnabled', 'value' => 'true'],
+            ['module' => 'SITE', 'key' => 'autoCancelUnpaidEnabled', 'value' => 'true'],
+            ['module' => 'SITE', 'key' => 'autoCancelUnpaidMinutes', 'value' => '45'],
             ['module' => 'SITE', 'key' => 'reelsEnabled', 'value' => 'true'],
             ['module' => 'SITE', 'key' => 'curatedLooksEnabled', 'value' => 'true'],
             ['module' => 'SITE', 'key' => 'reviewsEnabled', 'value' => 'true'],

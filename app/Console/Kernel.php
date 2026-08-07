@@ -28,8 +28,12 @@ class Kernel extends ConsoleKernel
         $schedule->command('maintenance:check-schedule')->everyMinute();
 
         // ── Daily Analytics Aggregation ──
-        // Aggregate today's metrics into the summary table every night at 23:55
-        $schedule->command('analytics:aggregate-daily --days=1')->dailyAt('23:55');
+        // Aggregate the last 2 days every hour so the summary table stays fresh
+        // (yesterday is re-aggregated too, covering gaps if the scheduler was
+        // down). All-time dashboard metrics, revenue comparison and customer
+        // growth read from this table, so keeping it current keeps the admin
+        // dashboard fast and accurate. The dashboard metrics are cached 300s.
+        $schedule->command('analytics:aggregate-daily --days=2')->hourly();
 
         // ── Guest User Cleanup (delete/anonymize placeholder accounts) ──
         $schedule->command('guest-users:cleanup --days=30')->dailyAt('03:00');
@@ -40,6 +44,18 @@ class Kernel extends ConsoleKernel
         // ── Abandoned Cart Reminders ──
         // Send email + DB notification reminders for carts abandoned >2 hours
         $schedule->command('abandoned-carts:process --hours=2')->everyFifteenMinutes();
+
+        // ── Unpaid Order Cleanup ──
+        // Auto-cancel PENDING (unpaid online checkout) orders older than the
+        // admin-configurable window (Admin → Settings, autoCancelUnpaidMinutes,
+        // default 45 min) and restore their stock, so abandoned Razorpay/UPI
+        // payments don't sit in limbo forever or hold inventory hostage. The
+        // command reads the enable toggle + window from settings itself (no flag
+        // needed here), and the countdown shown to customers reads the same
+        // settings — so frontend, scheduler, and admin control stay in sync.
+        $schedule->command('orders:cancel-unpaid')
+            ->everyFiveMinutes()
+            ->withoutOverlapping();
     }
 
     /**

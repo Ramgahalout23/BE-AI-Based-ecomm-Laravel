@@ -79,7 +79,7 @@ class CheckoutService
 
         $flashSaleDiscounts = $this->flashSaleService->getApplicableDiscounts($plainItems);
 
-        // Buy More, Save More — per-line volume discount based on each line's quantity
+        // Buy More, Save More — order-wide volume discount based on total cart quantity
         $bundleDiscount = $this->calculateBundleDiscount($plainItems);
 
         return [
@@ -97,13 +97,14 @@ class CheckoutService
     }
 
     /**
-     * Buy More, Save More — per-line volume discount.
-     * Each cart line is discounted based on its OWN quantity against the
-     * admin-configured bundle tiers (default: qty 2 → 5%, qty 3 → 10%, qty 4+ → 15%).
-     * A tier may optionally define a per-product maxQty cap, in which case the
-     * discount applies only while the line quantity is within [minQty, maxQty].
+     * Buy More, Save More — order-wide volume discount.
+     * Applies the tier for the TOTAL quantity across all cart items to the
+     * whole order value (default: 2+ items → 5% off, 3+ items → 10% off,
+     * 4+ items → 15% off). A tier may optionally define a maxQty cap, in
+     * which case the discount applies only while the total quantity is
+     * within [minQty, maxQty].
      * Only applies when the offer is activated in Admin → Settings (bundleOfferEnabled).
-     * Mirrors the frontend BUNDLE_TIERS in utils/constants.js.
+     * Mirrors the frontend calcBundleDiscount in utils/constants.js.
      *
      * @param array $items  Each item needs 'quantity' and 'price'.
      */
@@ -115,16 +116,18 @@ class CheckoutService
         }
 
         $tiers = $this->getBundleTiers();
-        $total = 0.0;
+        $totalQty = 0;
+        $totalValue = 0.0;
         foreach ($items as $item) {
-            $qty = (int) ($item['quantity'] ?? 0);
+            // Missing quantity defaults to 1 on both FE (?? 1) and BE so the
+            // tier threshold matches; a cart line always carries a qty >= 1.
+            $qty = (int) ($item['quantity'] ?? 1);
             $price = (float) ($item['price'] ?? 0);
-            $pct = $this->getBundleTierPercent($qty, $tiers);
-            if ($pct > 0) {
-                $total += $price * $qty * ($pct / 100);
-            }
+            $totalQty += $qty;
+            $totalValue += $price * $qty;
         }
-        return round($total, 2);
+        $pct = $this->getBundleTierPercent($totalQty, $tiers);
+        return round($totalValue * ($pct / 100), 2);
     }
 
     /**
@@ -221,8 +224,8 @@ class CheckoutService
 
     /**
      * Highest discount percent for a quantity among the tiers, honoring each
-     * tier's optional per-product maxQty window: a tier applies only while
-     * minQty <= qty <= maxQty (maxQty absent = open-ended).
+     * tier's optional maxQty cap against the TOTAL cart quantity: a tier
+     * applies only while minQty <= qty <= maxQty (maxQty absent = open-ended).
      */
     protected function getBundleTierPercent(int $qty, array $tiers): int
     {

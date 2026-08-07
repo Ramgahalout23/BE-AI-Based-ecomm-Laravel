@@ -10,7 +10,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class Address extends Model
 {
     use HasUuids;
-    protected $fillable = ['user_id', 'type', 'first_name', 'last_name', 'phone_number', 'address_line1', 'address_line2', 'city', 'state', 'zip_code', 'country', 'is_default'];
+    protected $fillable = ['user_id', 'type', 'first_name', 'last_name', 'phone_number', 'email', 'address_line1', 'address_line2', 'city', 'state', 'zip_code', 'country', 'is_default'];
     protected $casts = ['is_default' => 'boolean'];
 
     public function user(): BelongsTo { return $this->belongsTo(User::class); }

@@ -50,6 +50,9 @@ class AuthService
         $this->authRepository->createWallet($user->id);
         $this->authRepository->createLoyaltyPoints($user->id);
 
+        // Link any past guest-checkout orders that used this email
+        $this->claimOrdersByEmail($user);
+
         $token = $user->createToken('auth-token')->plainTextToken;
 
         // Send welcome email (fire-and-forget, matching TS behavior)
@@ -99,6 +102,10 @@ class AuthService
         }
 
         $this->authRepository->updateLastLogin($user->id);
+
+        // Link any past guest-checkout orders that used this email, so they
+        // appear in My Orders automatically after signing in.
+        $this->claimOrdersByEmail($user);
 
         // Revoke old tokens
         $user->tokens()->delete();
@@ -254,6 +261,10 @@ class AuthService
         }
 
         $token = $user->createToken('auth-token')->plainTextToken;
+
+        // Link any past guest-checkout orders that used this email
+        $this->claimOrdersByEmail($user);
+
         return ['token' => $token, 'message' => 'OTP verified successfully'];
     }
 
@@ -303,6 +314,30 @@ class AuthService
             // Loyalty points may already exist
         }
 
+        // Link any past guest-checkout orders that used this email
+        $this->claimOrdersByEmail($user);
+
         return $user;
+    }
+
+    /**
+     * Claim past guest-checkout orders for a user after a successful sign-in.
+     *
+     * Delegates to OrderService::claimGuestOrders and never breaks the auth flow
+     * — a failure is logged and ignored.
+     */
+    private function claimOrdersByEmail(User $user): void
+    {
+        try {
+            $claimed = app(OrderService::class)->claimGuestOrders($user);
+            if ($claimed > 0) {
+                Log::info("[AuthService] Claimed {$claimed} guest order(s) for user {$user->id} ({$user->email})");
+            }
+        } catch (\Exception $e) {
+            Log::error('[AuthService] Failed to claim guest orders', [
+                'user_id' => $user->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 }

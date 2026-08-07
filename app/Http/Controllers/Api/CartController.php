@@ -81,6 +81,10 @@ class CartController extends Controller
                 'items' => 'nullable|array',
                 'items.*.product_id' => 'required_with:items|string',
                 'items.*.quantity' => 'required_with:items|integer|min:1',
+                'items.*.size' => 'nullable|string',
+                'items.*.color' => 'nullable|string',
+                'items.*.variant_id' => 'nullable|string',
+                'items.*.variantId' => 'nullable|string',
             ]);
 
             // Merge by session_id (guest cart from server)
@@ -93,7 +97,15 @@ class CartController extends Controller
                 $failed = [];
                 foreach ($validated['items'] as $item) {
                     try {
-                        $this->cartService->addItem($item['product_id'], $item['quantity'], Auth::id());
+                        $this->cartService->addItem(
+                            $item['product_id'],
+                            $item['quantity'],
+                            Auth::id(),
+                            null,
+                            $item['size'] ?? null,
+                            $item['color'] ?? null,
+                            $item['variant_id'] ?? $item['variantId'] ?? null
+                        );
                         $merged[] = $item;
                     } catch (AppError $e) {
                         $failed[] = [
