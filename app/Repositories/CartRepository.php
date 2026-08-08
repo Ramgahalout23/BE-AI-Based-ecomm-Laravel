@@ -171,7 +171,7 @@ class CartRepository extends BaseRepository
      */
     public function getRecentlyViewed(string $userId, int $limit = 10): Collection
     {
-        return RecentlyViewedProduct::with('product.images')
+        return RecentlyViewedProduct::with('product.images', 'product.variants')
             ->where('user_id', $userId)
             ->latest('viewed_at')
             ->take($limit)

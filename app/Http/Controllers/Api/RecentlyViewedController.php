@@ -31,6 +31,18 @@ class RecentlyViewedController extends Controller
             'imageUrl' => $item->product?->images?->first()?->url ?? null,
             'category' => $item->product?->category?->name,
             'rating' => $item->product?->rating,
+            'quantity' => $item->product?->quantity,
+            // Full variant list so ProductCard's stock/quick-add logic works
+            // (missing variants made every card show as OUT OF STOCK).
+            'variants' => $item->product?->variants?->map(fn($v) => [
+                'id' => $v->id,
+                'name' => $v->name,
+                'sku' => $v->sku,
+                'price' => $v->price,
+                'quantity' => $v->quantity,
+                'attributes' => $v->attributes,
+                'images' => $v->images,
+            ]) ?? [],
             'viewed_at' => $item->viewed_at,
         ]);
 
