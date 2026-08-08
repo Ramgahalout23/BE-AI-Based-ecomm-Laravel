@@ -13,6 +13,7 @@ class Reel extends Model
 
     protected $fillable = [
         'title',
+        'badge',
         'description',
         'video_url',
         'image_url',

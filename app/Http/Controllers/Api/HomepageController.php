@@ -318,11 +318,12 @@ class HomepageController extends Controller
                         }])
                         ->orderBy('display_order')
                         ->orderBy('created_at', 'desc')
-                        ->select('id', 'title', 'description', 'video_url', 'image_url', 'link_url', 'display_order')
+                        ->select('id', 'title', 'badge', 'description', 'video_url', 'image_url', 'link_url', 'display_order')
                         ->get()
                         ->map(fn ($reel) => [
                             'id' => $reel->id,
                             'title' => $reel->title,
+                            'badge' => $reel->badge,
                             'description' => $reel->description,
                             'videoUrl' => $reel->video_url,
                             'imageUrl' => $reel->image_url,

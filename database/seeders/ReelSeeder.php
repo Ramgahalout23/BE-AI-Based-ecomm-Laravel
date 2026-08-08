@@ -15,6 +15,7 @@ class ReelSeeder extends Seeder
         $reelData = [
             [
                 'title' => 'Summer Collection 2024',
+                'badge' => 'Bestseller',
                 'description' => 'Light fabrics and breezy fits for the season ahead. Shop the latest drops.',
                 'video_url' => 'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4',
                 'image_url' => 'https://images.unsplash.com/photo-1523381210434-271e8be1f52b?q=80&w=600',
@@ -24,6 +25,7 @@ class ReelSeeder extends Seeder
             ],
             [
                 'title' => 'Streetwear Icons',
+                'badge' => 'Trending',
                 'description' => 'Bold graphics and oversized silhouettes that define urban style.',
                 'video_url' => 'https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/720/Big_Buck_Bunny_720_10s_1MB.mp4',
                 'image_url' => 'https://images.unsplash.com/photo-1572495641004-28421ae7c9d2?q=80&w=600',
@@ -33,6 +35,7 @@ class ReelSeeder extends Seeder
             ],
             [
                 'title' => 'Minimal Luxe Edit',
+                'badge' => 'New Drop',
                 'description' => 'Clean lines. Subtle details. Understated elegance for everyday.',
                 'video_url' => 'https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/720/Big_Buck_Bunny_720_10s_2MB.mp4',
                 'image_url' => 'https://images.unsplash.com/photo-1552374196-1ab2a1c593e8?q=80&w=600',
@@ -42,6 +45,7 @@ class ReelSeeder extends Seeder
             ],
             [
                 'title' => 'New Drops Available Now',
+                'badge' => 'Just In',
                 'description' => 'The freshest styles just landed — be the first to wear them.',
                 'video_url' => 'https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/720/Big_Buck_Bunny_720_10s_5MB.mp4',
                 'image_url' => 'https://images.unsplash.com/photo-1529374255404-311a2a4f1fd9?q=80&w=600',
@@ -51,6 +55,7 @@ class ReelSeeder extends Seeder
             ],
             [
                 'title' => 'Oversized Tees — The Edit',
+                'badge' => 'Bestseller',
                 'description' => 'Drop shoulder, boxy fit, premium cotton. The ultimate comfort wear.',
                 'video_url' => 'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4',
                 'image_url' => 'https://images.unsplash.com/photo-1583743814966-8936f5b7be1a?q=80&w=600',

@@ -48,7 +48,7 @@ class ReelController extends Controller
             ->withCount('likes')
             ->orderBy('display_order')
             ->orderBy('created_at', 'desc')
-            ->select('id', 'title', 'description', 'video_url', 'image_url', 'link_url', 'display_order')
+            ->select('id', 'title', 'badge', 'description', 'video_url', 'image_url', 'link_url', 'display_order')
             ->get();
 
         // Get liked reel IDs for the current user
@@ -64,6 +64,7 @@ class ReelController extends Controller
         $data = $reels->map(fn ($reel) => [
             'id' => $reel->id,
             'title' => $reel->title,
+            'badge' => $reel->badge,
             'description' => $reel->description,
             'videoUrl' => $reel->video_url,
             'imageUrl' => $reel->image_url,
@@ -156,7 +157,7 @@ class ReelController extends Controller
         $cacheKey = 'reels_admin:v' . $version . ':p' . $page . ':pp' . $perPage . ':s' . md5($search) . ':a' . $isActiveFilter;
 
         $payload = $this->cacheWithTracking($cacheKey, 300, function () use ($page, $perPage, $search, $isActiveFilter) {
-            $query = Reel::select('id', 'title', 'description', 'video_url', 'image_url', 'link_url', 'display_order', 'is_active', 'created_at')
+            $query = Reel::select('id', 'title', 'badge', 'description', 'video_url', 'image_url', 'link_url', 'display_order', 'is_active', 'created_at')
                 ->withCount('likes')
                 ->orderBy('display_order')
                 ->orderBy('created_at', 'desc');
@@ -204,6 +205,7 @@ class ReelController extends Controller
     {
         $validated = $request->validate([
             'title' => 'required|string|max:255',
+            'badge' => 'nullable|string|max:60',
             'description' => 'nullable|string|max:1000',
             'video_url' => 'nullable|string|max:2048',
             'image_url' => 'nullable|string|max:2048',
@@ -247,6 +249,7 @@ class ReelController extends Controller
 
         $validated = $request->validate([
             'title' => 'sometimes|string|max:255',
+            'badge' => 'nullable|string|max:60',
             'description' => 'nullable|string|max:1000',
             'video_url' => 'nullable|string|max:2048',
             'image_url' => 'nullable|string|max:2048',
