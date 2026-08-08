@@ -194,7 +194,14 @@ class CheckoutController extends Controller
                     'message' => 'None of the items in your cart are available. They may have been removed from the store.',
                 ], 422);
             }
-            $shippingCost = $subtotal >= 499 ? 0 : 50;
+            // Shipping mirrors the cart/checkout pages + CheckoutService::getSummary:
+            // free above the admin threshold, else the admin flat rate. Using the
+            // settings here (instead of hardcoded 499/50) keeps the charged order
+            // identical to what the user saw during checkout even when an admin
+            // changes the threshold or rate.
+            $shippingCost = $subtotal >= (float) $this->checkoutService->getFreeShippingThreshold()
+                ? 0
+                : (float) $this->checkoutService->getStandardShippingCost();
 
             // ── Auto-apply flash sale discounts ──
             $flashSaleResult = $this->flashSaleService->getApplicableDiscounts($orderItems);
@@ -203,6 +210,20 @@ class CheckoutController extends Controller
             $bundleDiscount = $this->checkoutService->calculateBundleDiscount($orderItems);
 
             $discount = $flashSaleResult['total_discount'] + $bundleDiscount;
+
+            // ── Coupon discount (applied server-side so the order total matches
+            // what the checkout screen displayed and what Razorpay charges) ──
+            $couponId = null;
+            if (!empty($validated['couponCode'])) {
+                try {
+                    $couponResult = $this->checkoutService->applyCoupon($validated['couponCode'], $subtotal);
+                    $couponDiscount = (float) ($couponResult['discount'] ?? 0);
+                    $discount += $couponDiscount;
+                    $couponId = $couponResult['coupon']['id'] ?? null;
+                } catch (\Throwable $e) {
+                    // Invalid/expired coupon — proceed without it rather than failing the order
+                }
+            }
 
             // ── Tax (honors the admin's taxCalculation setting: 0 for inclusive, % of subtotal for exclusive) ──
             $tax = $this->checkoutService->calculateTax($subtotal);
@@ -217,6 +238,7 @@ class CheckoutController extends Controller
                 'discount' => $discount,
                 'bundle_discount' => $bundleDiscount,
                 'flash_sale_discount' => $flashSaleResult['total_discount'],
+                'coupon_id' => $couponId,
                 'payment_method' => $validated['paymentMethod'] ?? null,
                 'notes' => $validated['notes'] ?? null,
             ], $preloadedProducts, $preloadedVariants);

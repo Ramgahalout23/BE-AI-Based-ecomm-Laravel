@@ -18,6 +18,12 @@ return new class extends Migration
 
     public function up(): void
     {
+        // This is a data seed, not schema — skip under tests so feature tests
+        // (e.g. ProductCatalogE2ETest) see a clean catalog with exact counts.
+        if (app()->runningUnitTests()) {
+            return;
+        }
+
         // Skip if the product already exists (e.g. re-running after rollback)
         if (Product::where('id', self::CUSTOM_TEE_PRODUCT_ID)->exists()) {
             return;

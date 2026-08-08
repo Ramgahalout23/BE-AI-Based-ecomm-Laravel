@@ -86,7 +86,17 @@ class PromotionController extends Controller
                 'offer_tagline' => 'nullable|string|max:255',
                 'offer_theme' => 'nullable|string|max:100',
                 'auto_apply' => 'nullable|boolean',
-            ])->validate();
+            ])->after(function ($v) use ($input) {
+                // An active promotion must carry a real discount (> 0) — a
+                // null/zero discount offer would otherwise surface as a
+                // misleading storefront card (e.g. "FREE GIFT") while never
+                // contributing any discount math.
+                $willBeActive = filter_var($input['is_active'] ?? false, FILTER_VALIDATE_BOOLEAN)
+                    || strtoupper((string) ($input['status'] ?? '')) === 'ACTIVE';
+                if ($willBeActive && (float) ($input['discount'] ?? 0) <= 0) {
+                    $v->errors()->add('discount', 'An active promotion must have a discount greater than 0. Set a real discount or keep the promotion inactive.');
+                }
+            })->validate();
 
             $productIds = $validated['product_ids'] ?? [];
             $categoryIds = $validated['category_ids'] ?? [];
@@ -105,6 +115,13 @@ class PromotionController extends Controller
         try {
             $input = $this->mapCamelCase($request->all(), $this->fieldMappings);
 
+            // Existing state — partial updates (e.g. the Activate/Pause toggle
+            // which only sends { status }) fall back to these values.
+            $existing = $this->promotionService->getById($id);
+            $existingDiscount = (float) ($existing['discount'] ?? 0);
+            $existingIsActive = (bool) ($existing['isActive'] ?? $existing['is_active'] ?? false);
+            $existingStatus = strtoupper((string) ($existing['status'] ?? ''));
+
             $validated = validator($input, [
                 'title' => 'nullable|string',
                 'description' => 'nullable|string',
@@ -122,7 +139,26 @@ class PromotionController extends Controller
                 'offer_highlight' => 'nullable|string|max:255',
                 'offer_tagline' => 'nullable|string|max:255',
                 'offer_theme' => 'nullable|string|max:100',
-            ])->validate();
+            ])->after(function ($v) use ($input, $existingDiscount, $existingIsActive, $existingStatus) {
+                // Effective activation state after this update — the promotion
+                // is "active" if either is_active is true or status is ACTIVE.
+                $effectiveIsActive = array_key_exists('is_active', $input)
+                    ? filter_var($input['is_active'], FILTER_VALIDATE_BOOLEAN)
+                    : $existingIsActive;
+                $effectiveStatus = array_key_exists('status', $input)
+                    ? strtoupper((string) $input['status'])
+                    : $existingStatus;
+                $willBeActive = $effectiveIsActive || $effectiveStatus === 'ACTIVE';
+
+                // Partial updates may omit discount — fall back to existing value.
+                $effectiveDiscount = array_key_exists('discount', $input)
+                    ? (float) ($input['discount'] ?? 0)
+                    : $existingDiscount;
+
+                if ($willBeActive && $effectiveDiscount <= 0) {
+                    $v->errors()->add('discount', 'An active promotion must have a discount greater than 0. Set a real discount or keep the promotion inactive.');
+                }
+            })->validate();
 
             // null = not provided (don't sync), [] = explicitly empty (clear all)
             $productIds = array_key_exists('product_ids', $validated) ? ($validated['product_ids'] ?? []) : null;

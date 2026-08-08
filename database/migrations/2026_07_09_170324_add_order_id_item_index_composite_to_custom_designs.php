@@ -16,22 +16,31 @@ return new class extends Migration
             // The new composite index (order_id, item_index) has order_id as its
             // leftmost column, so it can serve the FK — but we need to drop and
             // re-add the FK to switch which index backs it.
+            //
+            // SQLite manages FKs at table creation and would throw on
+            // dropForeign — guard the MySQL-only steps so the test suite
+            // (SQLite :memory:) can migrate.
+            $isMysql = Schema::getConnection()->getDriverName() === 'mysql';
 
-            // 1. Drop the foreign key constraint
-            $table->dropForeign(['order_id']);
+            if ($isMysql) {
+                // 1. Drop the foreign key constraint
+                $table->dropForeign(['order_id']);
 
-            // 2. Drop the individual order_id index (no longer needed;
-            //    the composite index covers single-column lookups on order_id too)
-            $table->dropIndex(['order_id']);
+                // 2. Drop the individual order_id index (no longer needed;
+                //    the composite index covers single-column lookups on order_id too)
+                $table->dropIndex(['order_id']);
+            }
 
             // 3. Add composite index that optimises the common query pattern:
             //    CustomDesign::where('order_id', $id)->get()->keyBy('item_index')
             //    CustomDesign::whereIn('order_id', $ids)->get()->groupBy('order_id')
             $table->index(['order_id', 'item_index']);
 
-            // 4. Re-add the foreign key — MySQL will use the composite index
-            //    (order_id, item_index) since order_id is the leftmost column.
-            $table->foreign('order_id')->references('id')->on('orders')->onDelete('cascade');
+            if ($isMysql) {
+                // 4. Re-add the foreign key — MySQL will use the composite index
+                //    (order_id, item_index) since order_id is the leftmost column.
+                $table->foreign('order_id')->references('id')->on('orders')->onDelete('cascade');
+            }
         });
     }
 

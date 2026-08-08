@@ -79,6 +79,7 @@ class OrderService
                 'discount' => $data['discount'] ?? 0,
                 'bundle_discount' => $data['bundle_discount'] ?? 0,
                 'flash_sale_discount' => $data['flash_sale_discount'] ?? 0,
+                'coupon_id' => $data['coupon_id'] ?? null,
                 'total' => $total + ($data['tax'] ?? 0) + ($data['shipping_cost'] ?? 0) - ($data['discount'] ?? 0),
                 'status' => ($data['payment_method'] ?? '') === 'COD' ? 'CONFIRMED' : 'PENDING',
                 'confirmed_at' => ($data['payment_method'] ?? '') === 'COD' ? now() : null,
@@ -178,12 +179,16 @@ class OrderService
                 );
             }
 
-            // Create payment record if payment method provided
+            // Create payment record if payment method provided.
+            // The amount is the NET total the customer actually pays (subtotal +
+            // tax + shipping − all discounts), matching the order's total field,
+            // so payment records, Razorpay order amounts and the order total
+            // never disagree (gross subtotal used to leak in here).
             if (!empty($data['payment_method'])) {
                 $this->orderRepository->createPayment([
                     'order_id' => $order->id,
                     'method' => $data['payment_method'],
-                    'amount' => $total,
+                    'amount' => $order->total,
                     'status' => 'PENDING',
                 ]);
             }

@@ -102,6 +102,7 @@ class ProductController extends Controller
                 'categoryId' => 'category_id',
                 'hoverImageUrl' => 'hover_image_url',
                 'videoUrl' => 'video_url',
+                'labelNumber' => 'label_number',
             ]);
             $request->replace($input);
 
@@ -114,6 +115,7 @@ class ProductController extends Controller
                 'quantity' => 'nullable|integer|min:0',
                 'status' => 'nullable|string|in:DRAFT,PUBLISHED,ARCHIVED',
                 'video_url' => 'nullable|string|max:2048',
+                'label_number' => 'nullable|string|max:24',
                 'attributes' => 'nullable|array',
             ]);
 
@@ -132,6 +134,7 @@ class ProductController extends Controller
                 'categoryId' => 'category_id',
                 'hoverImageUrl' => 'hover_image_url',
                 'videoUrl' => 'video_url',
+                'labelNumber' => 'label_number',
             ]);
             $request->replace($input);
 
@@ -142,6 +145,7 @@ class ProductController extends Controller
                 'sku' => 'nullable|string|unique:products,sku,'.$id,
                 'status' => 'nullable|string|in:DRAFT,PUBLISHED,ARCHIVED',
                 'video_url' => 'nullable|string|max:2048',
+                'label_number' => 'nullable|string|max:24',
                 'attributes' => 'nullable|array',
             ]);
 

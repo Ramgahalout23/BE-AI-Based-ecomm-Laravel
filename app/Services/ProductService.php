@@ -233,6 +233,46 @@ class ProductService
         return $this->enrichWithVariantFields($product->toArray());
     }
 
+    /**
+     * Auto-generate a unique label number for a product, incrementing per
+     * category so each category gets its own clean sequence:
+     *   - prefix derived from the category slug (first letters of each word,
+     *     e.g. "mens-tees" → "MT", "caps" → "CAP")
+     *   - sequence zero-padded to 4 digits (MT-0001, MT-0002, …)
+     *   - uncategorized products use the generic "PRD" prefix
+     *
+     * Used when the admin leaves the Label Number field blank, so store owners
+     * never have to think up serials — the card always shows a tidy one.
+     */
+    private function generateLabelNumber(?string $categoryId): string
+    {
+        $prefix = 'PRD';
+        if (!empty($categoryId)) {
+            $slug = (string) \App\Models\Category::where('id', $categoryId)->value('slug');
+            if ($slug !== '') {
+                $words = array_values(array_filter(explode('-', $slug)));
+                $initials = strtoupper(implode('', array_map(fn ($w) => substr($w, 0, 1), array_slice($words, 0, 2))));
+                // Single-word slugs (caps, bags) collapse to one letter — pad to a
+                // 3-char code from the slug instead of a lone initial.
+                $prefix = strlen($initials) >= 2
+                    ? $initials
+                    : strtoupper(substr(preg_replace('/[^a-z]/i', '', $slug), 0, 3));
+            }
+        }
+
+        // Degenerate slugs (all digits/symbols) can strip to empty — never let
+        // the LIKE query run with a bare dash prefix.
+        $prefix = $prefix !== '' ? $prefix : 'PRD';
+
+        // Highest existing sequence for this prefix → next number.
+        $max = (int) \App\Models\Product::where('label_number', 'like', $prefix . '-%')
+            ->get(['label_number'])
+            ->map(fn ($p) => (int) (explode('-', (string) $p->label_number)[1] ?? 0))
+            ->max();
+
+        return $prefix . '-' . str_pad((string) ($max + 1), 4, '0', STR_PAD_LEFT);
+    }
+
     public function create(array $data): array
     {
         if (!empty($data['sku'])) {
@@ -244,6 +284,12 @@ class ProductService
 
         $data['slug'] = Str::slug($data['name']) . '-' . Str::random(6);
         $data['status'] = $data['status'] ?? 'DRAFT';
+
+        // Label number auto-generated (per-category increment) when left blank,
+        // so store owners never need to enter a serial manually.
+        if (empty($data['label_number'])) {
+            $data['label_number'] = $this->generateLabelNumber($data['category_id'] ?? null);
+        }
 
         // Product attributes (fabric, gsm, etc.) are stored in product_attributes table
         $attributes = $data['attributes'] ?? null;
@@ -296,6 +342,12 @@ class ProductService
         // Product attributes (fabric, gsm, etc.) are stored in product_attributes table
         $attributes = $data['attributes'] ?? null;
         unset($data['attributes']);
+
+        // If the admin clears the Label Number, regenerate it (per-category
+        // increment) instead of leaving the card without a serial.
+        if (array_key_exists('label_number', $data) && empty($data['label_number'])) {
+            $data['label_number'] = $this->generateLabelNumber($product->category_id);
+        }
 
         $product = $this->productRepository->update($id, $data);
 

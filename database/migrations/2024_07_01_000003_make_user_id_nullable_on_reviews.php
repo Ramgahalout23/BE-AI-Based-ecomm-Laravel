@@ -9,8 +9,13 @@ return new class extends Migration
     public function up()
     {
         Schema::table('reviews', function (Blueprint $table) {
-            // Drop the foreign key first, then make nullable, then re-add (optional, user_id may be null)
-            $table->dropForeign(['user_id']);
+            // MySQL-only: the FK on user_id blocks making the column nullable, so
+            // drop it first. SQLite stores FKs inline at table creation and
+            // re-creates the table for column changes, so dropForeign would throw
+            // — guard it so the test suite (SQLite :memory:) can migrate.
+            if (Schema::getConnection()->getDriverName() === 'mysql') {
+                $table->dropForeign(['user_id']);
+            }
             $table->uuid('user_id')->nullable()->change();
         });
     }

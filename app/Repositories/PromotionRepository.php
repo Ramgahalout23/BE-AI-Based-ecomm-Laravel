@@ -55,7 +55,11 @@ class PromotionRepository extends BaseRepository
                 ->get();
 
             // Merge and re-sort globally by priority to match the original single-query ordering.
+            // Also drop promotions with no real discount (<= 0): a null/empty discount
+            // offer would otherwise surface as a misleading card (e.g. "FREE GIFT")
+            // in the storefront while never contributing any actual discount math.
             return $noEndDate->merge($activeDateRange)
+                ->filter(fn ($promotion) => (float) ($promotion->discount ?? 0) > 0)
                 ->sortByDesc('priority')
                 ->values();
         });

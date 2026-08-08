@@ -26,7 +26,7 @@ class Product extends Model
         'badge', 'quantity', 'sku', 'barcode', 'weight', 'category_id', 'brand_id',
         'status', 'is_featured', 'is_new', 'is_sale', 'is_digital', 'seo_title',
         'seo_description', 'seo_keywords', 'tags', 'view_count', 'rating', 'review_count', 'sold_count',
-        'hover_image_url', 'video_url'
+        'hover_image_url', 'video_url', 'label_number'
     ];
 
     protected $casts = [

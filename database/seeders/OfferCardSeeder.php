@@ -43,16 +43,19 @@ class OfferCardSeeder extends Seeder
                 'auto_apply'      => true,
             ],
             [
+                // Seeded PAUSED: the "FREE GIFT" badge advertises an auto-added gift
+                // that isn't implemented. Keep it inactive (no discount to apply) so it
+                // can't appear as an active store-offer card that never delivers.
                 'title'           => 'Summer Bonus',
                 'type'            => 'SEASONAL',
-                'discount'        => 15,
-                'status'          => 'ACTIVE',
-                'is_active'       => true,
+                'discount'        => null,
+                'status'          => 'PAUSED',
+                'is_active'       => false,
                 'offer_badge'     => 'FREE GIFT',
                 'offer_highlight' => 'Scrunchies ₹150',
                 'offer_tagline'   => 'AUTO · Added to Cart',
                 'offer_theme'     => 'summer-bonus',
-                'auto_apply'      => true,
+                'auto_apply'      => false,
             ],
             [
                 'title'           => 'Hot Deal',

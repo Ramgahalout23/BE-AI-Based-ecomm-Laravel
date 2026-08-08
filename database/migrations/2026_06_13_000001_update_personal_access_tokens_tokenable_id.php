@@ -11,6 +11,17 @@ return new class extends Migration
      */
     public function up(): void
     {
+        // SQLite is dynamically typed, so the column can simply be widened to
+        // hold UUID strings — no FK/index surgery needed (the information_schema
+        // introspection and ALTER ... MODIFY below are MySQL-only syntax).
+        if (Schema::getConnection()->getDriverName() !== 'mysql') {
+            Schema::table('personal_access_tokens', function ($table) {
+                $table->string('tokenable_id', 36)->nullable()->change();
+                $table->index(['tokenable_id', 'tokenable_type']);
+            });
+            return;
+        }
+
         // Drop any foreign key constraints referencing tokenable_id
         try {
             $constraints = DB::select("
@@ -64,7 +75,9 @@ return new class extends Migration
             $table->dropIndex(['tokenable_id', 'tokenable_type']);
         });
 
-        DB::statement('ALTER TABLE personal_access_tokens MODIFY tokenable_id BIGINT UNSIGNED NULL');
+        if (Schema::getConnection()->getDriverName() === 'mysql') {
+            DB::statement('ALTER TABLE personal_access_tokens MODIFY tokenable_id BIGINT UNSIGNED NULL');
+        }
 
         Schema::table('personal_access_tokens', function ($table) {
             $table->index(['tokenable_id', 'tokenable_type']);

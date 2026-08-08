@@ -41,14 +41,14 @@ class CheckoutService
         return round($subtotal * $this->getTaxRate(), 2);
     }
 
-    protected function getFreeShippingThreshold(): float
+    public function getFreeShippingThreshold(): float
     {
-        return (float) ($this->settingsService->get('freeShippingThreshold', '100'));
+        return (float) ($this->settingsService->get('freeShippingThreshold', '499'));
     }
 
-    protected function getStandardShippingCost(): float
+    public function getStandardShippingCost(): float
     {
-        return (float) ($this->settingsService->get('shippingFlatRate', '10'));
+        return (float) ($this->settingsService->get('shippingFlatRate', '50'));
     }
 
     public function getSummary(string $userId): array

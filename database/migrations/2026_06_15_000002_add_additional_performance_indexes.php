@@ -17,6 +17,7 @@ return new class extends Migration
                   AND TABLE_NAME = ?
                   AND INDEX_NAME = ?
             ", [$table, $indexName]);
+
             return !empty($result) && $result[0]->cnt > 0;
         } catch (\Exception $e) {
             return false;

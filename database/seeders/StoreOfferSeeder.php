@@ -46,19 +46,24 @@ class StoreOfferSeeder extends Seeder
                 'updated_at'     => now(),
             ],
             [
+                // Seeded PAUSED: a "FREE GIFT" offer has no % discount to apply, and the
+                // auto-add-gift-to-cart behaviour it advertised isn't implemented, so it
+                // must stay inactive to avoid a misleading card that never delivers.
+                // Give it a real discount value (and re-enable) from Admin → Promotions
+                // when the free-gift flow exists.
                 'id'             => Str::uuid(),
                 'title'          => 'Summer Bonus 🎀',
                 'description'    => 'Free scrunchies worth ₹150 automatically added to cart',
                 'type'           => 'SEASONAL',
                 'discount'       => null,
-                'status'         => 'ACTIVE',
-                'is_active'      => true,
+                'status'         => 'PAUSED',
+                'is_active'      => false,
                 'priority'       => 80,
                 'offer_badge'    => 'FREE GIFT',
                 'offer_highlight' => 'Scrunchies Worth ₹150',
                 'offer_tagline'  => 'AUTO · Added to Cart',
                 'offer_theme'    => 'summer-bonus',
-                'auto_apply'     => true,
+                'auto_apply'     => false,
                 'created_at'     => now(),
                 'updated_at'     => now(),
             ],

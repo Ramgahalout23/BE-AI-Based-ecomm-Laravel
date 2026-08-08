@@ -50,9 +50,6 @@ return new class extends Migration
 
     public function up(): void
     {
-        // MySQL-only: the information_schema existence check and the targeted
-        // admin-query indexes are meaningless (and unsupported via Schema::table
-        // on Laravel 9 SQLite). Skip cleanly on other drivers.
         if (DB::connection()->getDriverName() !== 'mysql') {
             return;
         }

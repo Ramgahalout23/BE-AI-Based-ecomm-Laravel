@@ -29,24 +29,29 @@ class CheckoutQueryProfileTest extends TestCase
 
         // Prevent queued jobs from firing during profiling
         \Illuminate\Support\Facades\Queue::fake();
-        // Prevent events from firing
-        \Illuminate\Support\Facades\Event::fake();
+        $uuid = fn () => (string) \Illuminate\Support\Str::uuid();
+
+        // 'id' isn't mass-assignable on these UUID models — create unguarded
+        // with explicit UUIDs.
+        \Illuminate\Database\Eloquent\Model::unguarded(function () use ($uuid) {
 
         $this->user = User::factory()->create([
+            'id' => $uuid(),
             'role' => 'CUSTOMER',
             'is_active' => true,
         ]);
         $this->token = $this->user->createToken('auth-token')->plainTextToken;
 
         $category = Category::create([
-            'name' => 'Test Cat', 'slug' => 'test-cat', 'is_active' => true,
+            'id' => $uuid(), 'name' => 'Test Cat', 'slug' => 'test-cat', 'is_active' => true,
         ]);
         $brand = Brand::create([
-            'name' => 'Test Brand', 'slug' => 'test-brand',
+            'id' => $uuid(), 'name' => 'Test Brand', 'slug' => 'test-brand',
         ]);
 
         // Create two products with images
         $product1 = Product::create([
+            'id' => $uuid(),
             'name' => 'Profile Product 1', 'slug' => 'profile-product-1',
             'description' => 'Test', 'short_description' => 'Test',
             'price' => 99.99, 'quantity' => 50, 'sku' => 'PRF-SKU-001',
@@ -54,6 +59,7 @@ class CheckoutQueryProfileTest extends TestCase
             'status' => 'PUBLISHED',
         ]);
         ProductImage::create([
+            'id' => $uuid(),
             'product_id' => $product1->id,
             'url' => '/images/product1.jpg',
             'alt' => 'Product 1',
@@ -61,6 +67,7 @@ class CheckoutQueryProfileTest extends TestCase
         ]);
 
         $product2 = Product::create([
+            'id' => $uuid(),
             'name' => 'Profile Product 2', 'slug' => 'profile-product-2',
             'description' => 'Test 2', 'short_description' => 'Test 2',
             'price' => 49.99, 'quantity' => 100, 'sku' => 'PRF-SKU-002',
@@ -68,6 +75,7 @@ class CheckoutQueryProfileTest extends TestCase
             'status' => 'PUBLISHED',
         ]);
         ProductImage::create([
+            'id' => $uuid(),
             'product_id' => $product2->id,
             'url' => '/images/product2.jpg',
             'alt' => 'Product 2',
@@ -76,18 +84,23 @@ class CheckoutQueryProfileTest extends TestCase
 
         // Add items to cart
         CartItem::create([
+            'id' => $uuid(),
             'user_id' => $this->user->id,
             'product_id' => $product1->id,
             'quantity' => 2,
+            'price' => $product1->price,
         ]);
         CartItem::create([
+            'id' => $uuid(),
             'user_id' => $this->user->id,
             'product_id' => $product2->id,
             'quantity' => 1,
+            'price' => $product2->price,
         ]);
 
         // Create a default address
         Address::create([
+            'id' => $uuid(),
             'user_id' => $this->user->id,
             'type' => 'HOME',
             'first_name' => 'Test', 'last_name' => 'User',
@@ -97,9 +110,10 @@ class CheckoutQueryProfileTest extends TestCase
             'is_default' => true,
         ]);
 
-        // Store product IDs for the test
-        $this->product1Id = $product1->id;
-        $this->product2Id = $product2->id;
+            // Store product IDs for the test
+            $this->product1Id = $product1->id;
+            $this->product2Id = $product2->id;
+        });
     }
 
     protected function authHeaders(): array
